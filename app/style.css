@@ -258,6 +258,30 @@ button.primary:hover {
   line-height: 1.5;
 }
 
+/* export size buttons */
+.exportBtns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exportBtns button.export {
+  background: linear-gradient(135deg, #ff3b30, #ffb347);
+  color: #140d0a;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(255, 60, 60, 0.3);
+}
+
+.exportBtns button.export:hover {
+  filter: brightness(1.08);
+}
+
 #status {
   margin: 0;
   font-size: 12px;

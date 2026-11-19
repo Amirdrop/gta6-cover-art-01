@@ -29,6 +29,10 @@ const LAYOUTS = {
   ],
 };
 
+// Default per-panel framing. Pan Y is biased slightly upward so photos show their
+// upper-middle region (faces) by default instead of centring (which can clip heads).
+export const DEFAULT_PAN = { panX: 0, panY: -0.5, zoom: 1 };
+
 const PANEL_PHOTO_COUNT = {
   grid3: 9,
   hero3: 6,
@@ -165,43 +169,63 @@ export function drawVignette(ctx, x, y, w, h, strength) {
 }
 
 // Draws the double-line Anton title block with slight skew and drop shadow.
-export function drawTitleBlock(ctx, x, y, w, line1, line2, size, color) {
-  if (!line1 && !line2) return;
+// Measures the text with ctx.measureText and scales the font size so both lines
+// (plus room for the tagline below) fit inside the top band within the art-deco frame.
+// Returns { bottom, size } where `bottom` is the baseline Y of the last line, so the
+// caller can place the tagline right below it without overlapping the frame.
+export function drawTitleBlock(ctx, x, y, w, line1, line2, size, color, maxH) {
+  if (!line1 && !line2) return { bottom: y, size: 0 };
   const lines = [line1 || '', line2 || ''].filter((l) => l.trim());
-  if (!lines.length) return;
+  if (!lines.length) return { bottom: y, size: 0 };
   ctx.save();
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
   const skew = -0.05;
   const px = x + w / 2;
-  const lh = size;
+
+  // Start from the requested size and shrink to fit the band width.
+  let fs = size;
+  ctx.font = `900 ${fs}px Anton, 'Arial Black', sans-serif`;
+  const availW = w * 0.96;
+  let widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  if (widest > availW) fs = Math.max(8, fs * (availW / widest));
+
+  // Then shrink so the block (two lines + cap/descent headroom) fits the maxH band.
+  if (maxH != null) {
+    const lh = fs * 0.9;
+    const blockH = lh * lines.length + fs * 0.7;
+    if (blockH > maxH) fs = Math.max(8, fs * (maxH / blockH));
+  }
+
+  ctx.font = `900 ${fs}px Anton, 'Arial Black', sans-serif`;
+  const lh = fs * 0.9;
+  const top = y + fs * 0.42;
 
   // drop shadow layer
   ctx.save();
-  ctx.translate(px, y);
+  ctx.translate(px, top);
   ctx.transform(1, 0, skew, 1, 0, 0);
-  ctx.font = `900 ${size}px Anton, 'Arial Black', sans-serif`;
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.shadowColor = 'rgba(0,0,0,0.7)';
-  ctx.shadowBlur = size * 0.18;
-  ctx.shadowOffsetY = size * 0.08;
-  lines.forEach((line, i) => ctx.fillText(line, 0, i * lh * 0.92));
+  ctx.shadowBlur = fs * 0.18;
+  ctx.shadowOffsetY = fs * 0.08;
+  lines.forEach((line, i) => ctx.fillText(line, 0, i * lh));
   ctx.restore();
 
   // main layer
-  ctx.translate(px, y);
+  ctx.translate(px, top);
   ctx.transform(1, 0, skew, 1, 0, 0);
-  ctx.font = `900 ${size}px Anton, 'Arial Black', sans-serif`;
-  ctx.fillStyle = color;
-  ctx.lineWidth = size * 0.02;
+  ctx.lineWidth = fs * 0.02;
   ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+  ctx.fillStyle = color;
   lines.forEach((line, i) => {
-    const ty = i * lh * 0.92;
+    const ty = i * lh;
     ctx.strokeText(line, 0, ty);
     ctx.fillText(line, 0, ty);
   });
   ctx.restore();
-  ctx.restore();
+  const bottom = top + (lines.length - 1) * lh + fs * 0.22;
+  return { bottom, size: fs };
 }
 
 // Pacifico script tagline under the title.
@@ -346,7 +370,10 @@ export function drawCover(ctx, state) {
     const ry = py + r[1] * ph;
     const rw = r[2] * pw;
     const rh = r[3] * ph;
-    drawPanel(ctx, photo, rx, ry, rw, rh, pan.panX || 0, pan.panY || 0, pan.zoom || 1);
+    drawPanel(ctx, photo, rx, ry, rw, rh,
+      pan.panX ?? DEFAULT_PAN.panX,
+      pan.panY ?? DEFAULT_PAN.panY,
+      pan.zoom ?? DEFAULT_PAN.zoom);
   }
 
   applyGrade(ctx, px, py, pw, ph, grade);
@@ -355,10 +382,22 @@ export function drawCover(ctx, state) {
   if (state.vignette) drawVignette(ctx, 0, 0, w, h, 0.45);
 
   const base = Math.min(aw, ah);
-  drawTitleBlock(ctx, ax, ay + ah * 0.04, aw, state.title1, state.title2, base * 0.115, '#ffffff');
-
-  const tagTop = ay + ah * 0.04 + (state.title2 ? 0.115 : 0.075) * base + base * 0.03;
-  drawTagline(ctx, ax, tagTop, aw, state.tagline, base * 0.05, '#ffd97a');
+  const titleTop = ay + ah * 0.03;
+  const titleAvail = titleH - ah * 0.06;
+  let titleSize = base * 0.115;
+  let tagSize = base * 0.05;
+  {
+    const blockH = titleSize * (state.title2 ? 1.9 : 1.1);
+    const need = blockH + tagSize * 1.5;
+    if (need > titleAvail) {
+      const s = titleAvail / need;
+      titleSize *= s;
+      tagSize *= s;
+    }
+  }
+  const tRes = drawTitleBlock(ctx, ax, titleTop, aw, state.title1, state.title2, titleSize, '#ffffff', titleAvail * 0.66);
+  const tagTop = Math.min(tRes.bottom + base * 0.04, py - tagSize * 0.5);
+  drawTagline(ctx, ax, tagTop, aw, state.tagline, tagSize, '#ffd97a');
 
   drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff');
 
@@ -367,8 +406,29 @@ export function drawCover(ctx, state) {
   drawBadge(ctx, w - aw * 0.1, h - ah * 0.125, base * 0.09, '#ff3b30', '#ffffff', state.price);
 }
 
-// Default state used to seed the UI and for a fresh start.
-export function createDefaultState(photo) {
+// Assigns photos across a layout's panels, seeding each panel with the default upper-middle pan.
+// For the default hero3 layout, the first photo becomes the big hero panel and the second fills
+// the two stacked side panels, so the default cover is a real multi-photo collage.
+function seedPanels(panels, photos, layout) {
+  const lay = layout || 'hero3';
+  const count = getLayoutPanels(lay);
+  const n = Math.max(1, photos.length);
+  for (let i = 0; i < count; i++) {
+    let photo = photos[0] || null;
+    if (n > 1) {
+      if (i === 0) photo = photos[0];
+      else if (i === 1 || i === 2) photo = photos[1];
+      else photo = photos[(i - 1) % n];
+    }
+    panels[i] = { ...DEFAULT_PAN, photo };
+  }
+}
+
+// Default state used to seed the UI and for a fresh start. Accepts one photo or an array.
+export function createDefaultState(photos) {
+  const arr = Array.isArray(photos) ? photos : (photos ? [photos] : []);
+  const panels = [];
+  seedPanels(panels, arr);
   return {
     layout: 'hero3',
     grade: 'sunset',
@@ -381,8 +441,8 @@ export function createDefaultState(photo) {
     grain: true,
     halftone: true,
     vignette: true,
-    photos: photo ? [photo] : [],
-    panels: [],
+    photos: arr,
+    panels,
   };
 }
 
@@ -391,4 +451,4 @@ export function getLayoutPanels(layout) {
   return PANEL_PHOTO_COUNT[layout] != null ? PANEL_PHOTO_COUNT[layout] : (LAYOUTS[layout] || LAYOUTS.hero3).length;
 }
 
-export { LAYOUTS, GRADES };
+export { LAYOUTS, GRADES, seedPanels };

@@ -9,7 +9,7 @@ export async function runShot(query, load) {
     title1: params.get('title1') || 'VICE',
     title2: params.get('title2') || 'CITY',
     tagline: 'The sun never sets on the heist.',
-    caption: (params.get('caption') || 'SUNSET HEIST').toUpperCase(),
+    caption: (params.get('caption') || 'GRAND THEFT SUNSET').toUpperCase(),
     price: '$59.99',
     layout: params.get('layout') || 'hero3',
     grade: params.get('grade') || 'sunset',

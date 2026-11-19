@@ -107,8 +107,12 @@
 
     <form id="panel-export" class="ctrlPanel hidden">
       <h2>Export</h2>
-      <p class="hint">Render is drawn offline at high resolution — no network, no upload.</p>
-      <button id="exportBtn" type="button" class="primary">Export PNG</button>
+      <p class="hint">Render is drawn offline at full resolution — no network, no upload. Pick a size to download a PNG.</p>
+      <div class="exportBtns" id="exportBtns">
+        <button type="button" class="export" data-w="1080" data-h="1080" data-name="vice-cover-square.png">1080 x 1080</button>
+        <button type="button" class="export" data-w="1080" data-h="1350" data-name="vice-cover-portrait.png">1080 x 1350</button>
+        <button type="button" class="export" data-w="1920" data-h="1080" data-name="vice-cover-landscape.png">1920 x 1080</button>
+      </div>
       <p id="status" role="status"></p>
     </form>
   </aside>

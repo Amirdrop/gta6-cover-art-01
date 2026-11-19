@@ -4,23 +4,28 @@ import {
   drawCover,
   createDefaultState,
   getLayoutPanels,
+  seedPanels,
   LAYOUTS,
   GRADES,
+  DEFAULT_PAN,
 } from './cover.js';
 import { runShot } from './shots.js';
 
 const PREVIEW_SIZE = 900;
-const EXPORT_SIZE = 1800;
+const SAMPLE_SOURCES = ['samples/boulevard.jpg', 'samples/pier.jpg'];
+const EXPORT_SIZES = [
+  { label: '1080 x 1080', name: 'vice-cover-square.png', w: 1080, h: 1080 },
+  { label: '1080 x 1350', name: 'vice-cover-portrait.png', w: 1080, h: 1350 },
+  { label: '1920 x 1080', name: 'vice-cover-landscape.png', w: 1920, h: 1080 },
+];
 
 const canvas = document.getElementById('cover');
-const state = createDefaultState(null)
+const state = createDefaultState([]);
 canvas.width = PREVIEW_SIZE;
 canvas.height = PREVIEW_SIZE;
 
 const previewCtx = canvas.getContext('2d');
 const offscreen = document.createElement('canvas');
-offscreen.width = EXPORT_SIZE;
-offscreen.height = EXPORT_SIZE;
 const exportCtx = offscreen.getContext('2d');
 
 const $ = (id) => document.getElementById(id);
@@ -45,7 +50,7 @@ const els = {
   toggleGrain: $('toggleGrain'),
   toggleHalftone: $('toggleHalftone'),
   toggleVignette: $('toggleVignette'),
-  exportBtn: $('exportBtn'),
+  exportBtns: $('exportBtns'),
   status: $('status'),
 };
 
@@ -92,9 +97,9 @@ function syncPanelControls() {
   }
   els.panelSelect.value = String(Math.min(i, n - 1));
   const pan = state.panels[selectedPanel()] || {};
-  els.panX.value = pan.panX || 0;
-  els.panY.value = pan.panY || 0;
-  els.zoom.value = pan.zoom || 1;
+  els.panX.value = pan.panX ?? DEFAULT_PAN.panX;
+  els.panY.value = pan.panY ?? DEFAULT_PAN.panY;
+  els.zoom.value = pan.zoom ?? DEFAULT_PAN.zoom;
 }
 
 function getOrCreatePanel(i) {
@@ -233,40 +238,145 @@ els.toggleGrain.addEventListener('change', () => { state.grain = els.toggleGrain
 els.toggleHalftone.addEventListener('change', () => { state.halftone = els.toggleHalftone.checked; redraw(); });
 els.toggleVignette.addEventListener('change', () => { state.vignette = els.toggleVignette.checked; redraw(); });
 
-// export at full resolution
-els.exportBtn.addEventListener('click', () => {
+// export at full resolution for any of the supported sizes (PNG download via toBlob + anchor click)
+let currentExport = EXPORT_SIZES[0];
+
+function exportAt(w, h, name) {
+  offscreen.width = w;
+  offscreen.height = h;
   drawCover(exportCtx, state);
   offscreen.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'vice-cover.png';
+    a.download = name || 'vice-cover.png';
     a.click();
-    els.status.textContent = `Saved vice-cover.png (${EXPORT_SIZE} x ${EXPORT_SIZE})`;
+    els.status.textContent = `Saved ${a.download} (${w} x ${h})`;
   }, 'image/png');
+}
+
+els.exportBtns.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-w]');
+  if (!btn) return;
+  const w = Number(btn.dataset.w);
+  const h = Number(btn.dataset.h);
+  currentExport = EXPORT_SIZES.find((s) => s.w === w && s.h === h) || currentExport;
+  exportAt(w, h, btn.dataset.name);
+});
+
+// ---- keyboard shortcuts ----
+const LAYOUT_ORDER = ['hero3', 'grid3', 'filmstrip', 'duo', 'full'];
+const GRADE_ORDER = Object.keys(GRADES);
+const PAN_STEP = 0.05;
+
+function clampPan(v) {
+  return Math.max(-1, Math.min(1, Math.round(v * 100) / 100));
+}
+
+// Mirror the selected panel's pan values onto the pan sliders.
+function syncPanSliders() {
+  const pan = state.panels[selectedPanel()] || DEFAULT_PAN;
+  els.panX.value = pan.panX ?? DEFAULT_PAN.panX;
+  els.panY.value = pan.panY ?? DEFAULT_PAN.panY;
+  els.zoom.value = pan.zoom ?? DEFAULT_PAN.zoom;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const k = e.key;
+  // 1-5 pick a layout
+  const li = Number(k) - 1;
+  if (k >= '1' && k <= '9' && li < LAYOUT_ORDER.length) {
+    const lay = LAYOUT_ORDER[li];
+    state.layout = lay;
+    els.layout.value = lay;
+    syncPanelControls();
+    redraw();
+    return;
+  }
+  // g cycles the grade
+  if (k === 'g' || k === 'G') {
+    const i = GRADE_ORDER.indexOf(state.grade);
+    state.grade = GRADE_ORDER[(i + 1) % GRADE_ORDER.length];
+    els.grade.value = state.grade;
+    redraw();
+    return;
+  }
+  // e exports the current size
+  if (k === 'e' || k === 'E') {
+    exportAt(currentExport.w, currentExport.h, currentExport.name);
+    return;
+  }
+  // arrow keys nudge the selected panel's pan
+  const pan = getOrCreatePanel(selectedPanel());
+  let dirty = false;
+  if (k === 'ArrowLeft') { pan.panX = clampPan((pan.panX ?? DEFAULT_PAN.panX) - PAN_STEP); dirty = true; }
+  else if (k === 'ArrowRight') { pan.panX = clampPan((pan.panX ?? DEFAULT_PAN.panX) + PAN_STEP); dirty = true; }
+  else if (k === 'ArrowUp') { pan.panY = clampPan((pan.panY ?? DEFAULT_PAN.panY) - PAN_STEP); dirty = true; }
+  else if (k === 'ArrowDown') { pan.panY = clampPan((pan.panY ?? DEFAULT_PAN.panY) + PAN_STEP); dirty = true; }
+  if (dirty) {
+    syncPanSliders();
+    redraw();
+    e.preventDefault();
+  }
 });
 
 // ---- shot support (screenshots) ----
+// Renders the cover offscreen at the shot size and exposes it on window.__shotCanvas.
+async function renderShotCover() {
+  const w = 1080, h = 1350;
+  offscreen.width = w;
+  offscreen.height = h;
+  drawCover(exportCtx, state);
+  const shotCanvas = document.createElement('canvas');
+  shotCanvas.width = w;
+  shotCanvas.height = h;
+  shotCanvas.getContext('2d').drawImage(offscreen, 0, 0);
+  window.__shotCanvas = shotCanvas;
+}
+
 async function applyShot() {
   const query = new URLSearchParams(location.search);
+  const shot = query.get('shot');
+  // With no ?shot param (plain editor view) we keep the auto-loaded two-sample collage.
+  if (!shot) return;
   await runShot(
     query,
-    async (sample, texts, shot) => {
-      const img = await loadImage(sample);
-      state.photos = [img];
+    async (sample, texts, shotName) => {
       Object.assign(state, texts);
-      renderGallery();
-      syncPanelControls();
-      if (shot === 'cover') document.body.classList.add('shot-cover');
+      if (shotName === 'cover') {
+        // ?shot=cover: skip editor chrome, render the 1080x1350 cover offscreen.
+        document.body.classList.add('shot-cover');
+        renderGallery();
+        syncPanelControls();
+        redraw();
+        await renderShotCover();
+      } else {
+        // ?shot=editor (and any other shot): apply the single sample photo as before.
+        const img = await loadImage(sample);
+        state.photos = [img];
+        seedPanels(state.panels, state.photos, state.layout);
+        renderGallery();
+        syncPanelControls();
+        redraw();
+      }
     },
   );
 }
 
 async function init() {
+  // Wait for webfonts before any canvas drawing so Anton/Pacifico render correctly.
+  await document.fonts.ready;
   await ensureFonts();
-  await applyShot();
+  // Auto-load both sample photos on startup (Task 2).
+  const samples = await Promise.all(
+    SAMPLE_SOURCES.map((src) => loadImage(src).catch(() => null)),
+  );
+  state.photos = samples.filter(Boolean);
+  seedPanels(state.panels, state.photos, state.layout);
   syncPanelControls();
   renderGallery();
   redraw();
+  await applyShot();
   requestAnimationFrame(() => requestAnimationFrame(() => { window.__shotReady = true; }));
 }
 
