@@ -283,7 +283,7 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
 
   // Kicker, letterspaced, above the title.
   if (hasK) {
-    drawTracked(ctx, kicker.trim(), px, cursor, kickerH, kickerH * 0.22, color);
+    drawTracked(ctx, kicker.trim(), px, cursor, kickerH, kickerH * 0.22, '#f7e6b0');
     cursor += kickerH + gap12;
   }
 
@@ -302,7 +302,7 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
     ctx.lineWidth = Math.max(1, fs * 0.024);
     ctx.strokeStyle = 'rgba(0,0,0,0.92)';
     ctx.strokeText(line, 0, 0);
-    ctx.fillStyle = color;
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(line, 0, 0);
     ctx.restore();
   });
