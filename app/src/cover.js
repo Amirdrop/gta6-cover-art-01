@@ -286,6 +286,7 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
   // Title lines: white fill, thin black outline, hard offset shadow, skewed -4deg.
   lines.forEach((line, i) => {
     const ty = cursor + i * lh2;
+    ctx.font = fontFor(fs);
     ctx.save();
     ctx.translate(px, ty);
     ctx.transform(1, 0, skew, 1, 0, 0);
