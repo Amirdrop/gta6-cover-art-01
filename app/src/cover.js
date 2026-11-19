@@ -10,9 +10,9 @@ const LAYOUTS = {
     [0.0, 0.64, 1 / 3, 0.36], [1 / 3, 0.64, 1 / 3, 0.36], [2 / 3, 0.64, 1 / 3, 0.36],
   ],
   hero3: [
-    [0.0, 0.0, 0.62, 0.58],
-    [0.62, 0.0, 0.38, 0.29], [0.62, 0.29, 0.38, 0.29],
-    [0.0, 0.58, 0.34, 0.42], [0.34, 0.58, 0.33, 0.42], [0.67, 0.58, 0.33, 0.42],
+    [0.0, 0.0, 0.58, 1.0],
+    [0.58, 0.0, 0.42, 0.5],
+    [0.58, 0.5, 0.42, 0.5],
   ],
   filmstrip: [
     [0.0, 0.0, 0.34, 1.0],
@@ -35,40 +35,69 @@ export const DEFAULT_PAN = { panX: 0, panY: -0.5, zoom: 1 };
 
 const PANEL_PHOTO_COUNT = {
   grid3: 9,
-  hero3: 6,
+  hero3: 3,
   filmstrip: 3,
   duo: 4,
   full: 1,
 };
 
+// Clamp a channel to 0..255.
+function clamp255(v) {
+  return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+// Vice City sunset: shadow lift toward deep purple/teal, highlights toward hot
+// orange/magenta, ~20% saturation up and ~15% contrast up.
+function gradeSunset(r, g, b) {
+  r = (r - 128) * 1.15 + 128;
+  g = (g - 128) * 1.15 + 128;
+  b = (b - 128) * 1.15 + 128;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  r = lum + (r - lum) * 1.2;
+  g = lum + (g - lum) * 1.2;
+  b = lum + (b - lum) * 1.2;
+  const t = (lum - 128) / 128;
+  r += t * 58 + (1 - t) * 6;
+  b += (1 - t) * 46 - t * 12;
+  g += (1 - t) * 14;
+  return [clamp255(r), clamp255(g), clamp255(b)];
+}
+
+// Neon duotone: shadows bleed magenta, highlights bleed cyan.
+function gradeNeon(r, g, b) {
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  const s = lum / 255;
+  let nr = (1 - s) * 255;
+  let ng = s * 255;
+  const nb = 255;
+  nr = (nr - 128) * 1.2 + 128;
+  ng = (ng - 128) * 1.2 + 128;
+  return [clamp255(nr), clamp255(ng), clamp255(nb)];
+}
+
+// High-contrast black & white with a warm paper tint.
+function gradeMono(r, g, b) {
+  let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  lum = (lum - 128) * 1.55 + 128;
+  lum = clamp255(lum);
+  return [clamp255(lum * 1.03), clamp255(lum), clamp255(lum * 0.86)];
+}
+
 const GRADES = {
   sunset: {
     name: 'Sunset',
-    overlay: [
-      [0.0, 'rgba(255, 92, 40, 0.20)'],
-      [0.45, 'rgba(255, 140, 60, 0.12)'],
-      [0.7, 'rgba(220, 60, 160, 0.28)'],
-      [1.0, 'rgba(120, 30, 160, 0.42)'],
-    ],
+    pixel: gradeSunset,
     halftone: 'rgba(255, 200, 120, 1)',
   },
   neon: {
     name: 'Neon',
-    overlay: [
-      [0.0, 'rgba(120, 20, 220, 0.30)'],
-      [0.5, 'rgba(255, 30, 120, 0.20)'],
-      [1.0, 'rgba(20, 220, 255, 0.26)'],
-    ],
+    pixel: gradeNeon,
     halftone: 'rgba(120, 255, 255, 1)',
   },
   mono: {
     name: 'Mono',
-    grayscale: true,
-    overlay: [
-      [0.0, 'rgba(20, 20, 30, 0.10)'],
-      [1.0, 'rgba(0, 0, 5, 0.30)'],
-    ],
-    halftone: 'rgba(255, 255, 255, 1)',
+    pixel: gradeMono,
+    halftone: 'rgba(255, 244, 224, 1)',
   },
   teal: {
     name: 'Teal-Orange',
@@ -108,19 +137,33 @@ export function drawPanel(ctx, photo, x, y, w, h, panX = 0, panY = 0, zoom = 1) 
   ctx.restore();
 }
 
-// Applies a color grade: optional grayscale plus a vertical gradient overlay across a rect.
+// Applies a color grade. Grades with a `pixel` transform run a per-pixel pass (getImageData /
+// putImageData) on the rect, then any overlay gradient is layered on topain. Panels are graded one
+// rect at a time before compositing so the pass stays fast even at export size.
 export function applyGrade(ctx, x, y, w, h, grade) {
   ctx.save();
-  if (grade.grayscale) {
+  if (grade && grade.pixel) {
+    const img = ctx.getImageData(x, y, w, h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const o = grade.pixel(d[i], d[i + 1], d[i + 2]);
+      d[i] = o[0];
+      d[i + 1] = o[1];
+      d[i + 2] = o[2];
+    }
+    ctx.putImageData(img, x, y);
+  } else if (grade && grade.grayscale) {
     ctx.globalCompositeOperation = 'saturation';
     ctx.fillStyle = 'rgba(128,128,128,1)';
     ctx.fillRect(x, y, w, h);
     ctx.globalCompositeOperation = 'source-over';
   }
-  const overlay = ctx.createLinearGradient(x, y, x, y + h);
-  for (const [t, c] of grade.overlay) overlay.addColorStop(t, c);
-  ctx.fillStyle = overlay;
-  ctx.fillRect(x, y, w, h);
+  if (grade && grade.overlay) {
+    const overlay = ctx.createLinearGradient(x, y, x, y + h);
+    for (const [t, c] of grade.overlay) overlay.addColorStop(t, c);
+    ctx.fillStyle = overlay;
+    ctx.fillRect(x, y, w, h);
+  }
   ctx.restore();
 }
 
@@ -168,64 +211,115 @@ export function drawVignette(ctx, x, y, w, h, strength) {
   ctx.restore();
 }
 
-// Draws the double-line Anton title block with slight skew and drop shadow.
-// Measures the text with ctx.measureText and scales the font size so both lines
-// (plus room for the tagline below) fit inside the top band within the art-deco frame.
-// Returns { bottom, size } where `bottom` is the baseline Y of the last line, so the
-// caller can place the tagline right below it without overlapping the frame.
-export function drawTitleBlock(ctx, x, y, w, line1, line2, size, color, maxH) {
-  if (!line1 && !line2) return { bottom: y, size: 0 };
+// Draws a letterspaced (tracked) line of Anton text centered at cx, with its top at `top`.
+function drawTracked(ctx, text, cx, top, size, tracking, color) {
+  ctx.font = `900 ${size}px Anton, 'Arial Black', sans-serif`;
+  ctx.fillStyle = color;
+  const trk = tracking == null ? size * 0.28 : tracking;
+  const letters = [...text];
+  let total = 0;
+  for (const ch of letters) total += ctx.measureText(ch).width + trk;
+  total -= trk;
+  let x = cx - total / 2;
+  for (const ch of letters) {
+    ctx.fillText(ch, x, top);
+    x += ctx.measureText(ch).width + trk;
+  }
+}
+
+// Draws the GTA-style title group: a letterspaced kicker, the double-line Anton title (huge,
+// filled white with a thin black outline and hard offset shadow, skewed -4deg, line height 0.86x
+// so lines never overlap), and the Pacifico tagline. The whole group is vertically centred inside
+// the `maxH` band. Auto-fits so the wider title line spans 78% of the cover width)Skip and clamps
+// each line to 15% of the cover height. Returns { top, bottom, size } so the caller can prove the
+// group stays inside the frame's inner rect.
+export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, coverW, coverH, maxH) {
   const lines = [line1 || '', line2 || ''].filter((l) => l.trim());
-  if (!lines.length) return { bottom: y, size: 0 };
+  if (!lines.length) return { top: y, bottom: y, size: 0 };
   ctx.save();
-  ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
-  const skew = -0.05;
+  ctx.textBaseline = 'top';
+
+  const skew = -4 * Math.PI / 180;
   const px = x + w / 2;
+  const fontFor = (s) => `900 ${s}px Anton, 'Arial Black', sans-serif`;
 
-  // Start from the requested size and shrink to fit the band width.
-  let fs = size;
-  ctx.font = `900 ${fs}px Anton, 'Arial Black', sans-serif`;
-  const availW = w * 0.96;
-  let widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  if (widest > availW) fs = Math.max(8, fs * (availW / widest));
+  // Auto-fit the title font: wider line spans 78% of the cover width, capped at 15% of height.
+  ctx.font = fontFor(100);
+  const widestRef = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  let fs = 100 * (w * 0.78) / Math.max(1, widestRef);
+  fs = Math.min(fs, coverH * 0.15);
+  fs = Math.max(6, fs);
 
-  // Then shrink so the block (two lines + cap/descent headroom) fits the maxH band.
-  if (maxH != null) {
-    const lh = fs * 0.9;
-    const blockH = lh * lines.length + fs * 0.7;
-    if (blockH > maxH) fs = Math.max(8, fs * (maxH / blockH));
+  const hasK = !!(kicker && kicker.trim());
+  const hasT = !!(tagline && tagline.trim());
+  const kickerH = hasK ? Math.max(6, coverH * 0.022) : 0;
+  const tagH = hasT ? Math.max(10, coverH * 0.045) : 0;
+  const lh = fs * 0.86;
+  const gap1 = hasK ? fs * 0.16 : 0;
+  const gap2 = hasT ? fs * 0.28 : 0;
+  const titleH = lh * lines.length;
+  const groupH = kickerH + gap1 + titleH + gap2 + tagH;
+
+  // Shrink the title font so the whole group fits the band (kicker/tagline stay fixed size).
+  if (maxH != null && groupH > maxH) {
+    const perFs = lh / fs * lines.length + gap1 / fs + gap2 / fs;
+    const availForFs = Math.max(1, maxH - kickerH - tagH);
+    fs = Math.max(6, Math.min(fs, availForFs / perFs));
+  }
+  fs = Math.max(6, fs);
+
+  // Recompute dependent sizes after any font rescale.
+  const lh2 = fs * 0.86;
+  const gap12 = hasK ? fs * 0.16 : 0;
+  const gap22 = hasT ? fs * 0.28 : 0;
+  const titleH2 = lh2 * lines.length;
+  const groupH2 = kickerH + gap12 + titleH2 + gap22 + tagH;
+
+  // Vertically centre the whole group inside the band.
+  let top = y;
+  if (maxH != null) top = y + Math.max(0, (maxH - groupH2) / 2);
+  let cursor = top;
+
+  // Kicker, letterspaced, above the title.
+  if (hasK) {
+    drawTracked(ctx, kicker.trim(), px, cursor, kickerH, kickerH * 0.22, color);
+    cursor += kickerH + gap12;
   }
 
-  ctx.font = `900 ${fs}px Anton, 'Arial Black', sans-serif`;
-  const lh = fs * 0.9;
-  const top = y + fs * 0.42;
-
-  // drop shadow layer
-  ctx.save();
-  ctx.translate(px, top);
-  ctx.transform(1, 0, skew, 1, 0, 0);
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.shadowColor = 'rgba(0,0,0,0.7)';
-  ctx.shadowBlur = fs * 0.18;
-  ctx.shadowOffsetY = fs * 0.08;
-  lines.forEach((line, i) => ctx.fillText(line, 0, i * lh));
-  ctx.restore();
-
-  // main layer
-  ctx.translate(px, top);
-  ctx.transform(1, 0, skew, 1, 0, 0);
-  ctx.lineWidth = fs * 0.02;
-  ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-  ctx.fillStyle = color;
+  // Title lines: white fill, thin black outline, hard offset shadow, skewed -4deg.
   lines.forEach((line, i) => {
-    const ty = i * lh;
-    ctx.strokeText(line, 0, ty);
-    ctx.fillText(line, 0, ty);
+    const ty = cursor + i * lh2;
+    ctx.save();
+    ctx.translate(px, ty);
+    ctx.transform(1, 0, skew, 1, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillText(line, fs * 0.045, fs * 0.055);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(px, ty);
+    ctx.transform(1, 0, skew, 1, 0, 0);
+    ctx.lineWidth = Math.max(1, fs * 0.024);
+    ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+    ctx.strokeText(line, 0, 0);
+    ctx.fillStyle = color;
+    ctx.fillText(line, 0, 0);
+    ctx.restore();
   });
+
+  // Tagline, Pacifico, under the title.
+  if (hasT) {
+    const ty = cursor + titleH2 + gap22;
+    ctx.font = `${tagH}px Pacifico, cursive`;
+    ctx.fillStyle = '#ffd97a';
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = tagH * 0.3;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(tagline, px, ty);
+  }
+
   ctx.restore();
-  const bottom = top + (lines.length - 1) * lh + fs * 0.22;
-  return { bottom, size: fs };
+  return { top, bottom: top + groupH2, size: fs };
 }
 
 // Pacifico script tagline under the title.
@@ -282,64 +376,52 @@ export function drawFrame(ctx, x, y, w, h, color) {
   ctx.restore();
 }
 
-// Star/price-badge logo: an invented game badge (a starburst with a star in a disc) in a corner.
+// "DAY ONE" price sticker badge: a circular white disc with a thin dark ring, an orange sunburst of
+// triangular rays behind it, '9.99' on a black bar across the middle, and a small 'DAY ONE' caption
+// above. No star shape anywhere.
 export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
   ctx.save();
   ctx.translate(cx, cy);
-  const points = 5;
-  // starburst behind
-  ctx.fillStyle = bg;
-  ctx.beginPath();
-  for (let i = 0; i < points * 2; i++) {
-    const rad = i % 2 === 0 ? size : size * 0.7;
-    const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-    const px = Math.cos(a) * rad;
-    const py = Math.sin(a) * rad;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.lineWidth = size * 0.04;
-  ctx.strokeStyle = fg;
-  ctx.stroke();
 
-  // inner disc
+  // Orange sunburst of triangular rays behind the disc.
+  const rays = 16;
+  ctx.fillStyle = '#ff8c1a';
   ctx.beginPath();
-  ctx.arc(0, 0, size * 0.46, 0, Math.PI * 2);
-  ctx.fillStyle = fg;
+  for (let i = 0; i < rays; i++) {
+    const a0 = (i / rays) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((i + 1) / rays) * Math.PI * 2 - Math.PI / 2;
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a0) * size * 1.5, Math.sin(a0) * size * 1.5);
+    ctx.lineTo(Math.cos(a1) * size * 1.5, Math.sin(a1) * size * 1.5);
+    ctx.closePath();
+  }
   ctx.fill();
-  ctx.strokeStyle = bg;
+
+  // White disc with a thin dark ring.
+  ctx.beginPath();
+  ctx.arc(0, 0, size, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
   ctx.lineWidth = size * 0.05;
+  ctx.strokeStyle = '#16161a';
   ctx.stroke();
 
-  // 5-point star
-  ctx.fillStyle = bg;
-  ctx.beginPath();
-  for (let i = 0; i < points * 2; i++) {
-    const rad = i % 2 === 0 ? size * 0.42 : size * 0.19;
-    const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
-    const px = Math.cos(a) * rad;
-    const py = Math.sin(a) * rad;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  // Black bar across the middle.
+  ctx.fillStyle = '#101014';
+  ctx.fillRect(-size * 1.35, -size * 0.3, size * 2.7, size * 0.6);
 
-  // price label under the badge
-  if (label) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = `bold ${size * 0.3}px Anton, sans-serif`;
-    ctx.fillStyle = fg;
-    ctx.shadowColor = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur = 4;
-    ctx.fillText(label, cx, cy + size * 0.98);
-    ctx.restore();
-  }
+  // Price on the bar.
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `900 ${size * 0.62}px Anton, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('9.99', 0, size * 0.02);
+
+  // Small "DAY ONE" caption above the disc.
+  ctx.fillStyle = '#16161a';
+  ctx.font = `900 ${size * 0.34}px Anton, sans-serif`;
+  ctx.fillText('DAY ONE', 0, -size * 0.98);
+  ctx.restore();
 }
 
 // The top-level draw. `state` holds everything: layout, grade, photos, panels, texts, toggles.
@@ -356,6 +438,7 @@ export function drawCover(ctx, state) {
   const titleH = ah * 0.21;
   const capH = ah * 0.13;
   const px = ax, py = ay + titleH, pw = aw, ph = ah - titleH - capH;
+  const base = Math.min(aw, ah);
 
   const layout = state.layout || 'hero3';
   const grade = GRADES[state.grade] || GRADES.sunset;
@@ -374,30 +457,18 @@ export function drawCover(ctx, state) {
       pan.panX ?? DEFAULT_PAN.panX,
       pan.panY ?? DEFAULT_PAN.panY,
       pan.zoom ?? DEFAULT_PAN.zoom);
+    // Grade each panel rect right after it is drawn (before compositing) so the
+    // per-pixel pass stays cheap even at full export resolution.
+    applyGrade(ctx, rx, ry, rw, rh, grade);
   }
 
-  applyGrade(ctx, px, py, pw, ph, grade);
   if (state.halftone) drawHalftone(ctx, px, py, pw, ph, grade);
   if (state.grain) drawGrain(ctx, 0, 0, w, h, 0.05);
   if (state.vignette) drawVignette(ctx, 0, 0, w, h, 0.45);
 
-  const base = Math.min(aw, ah);
   const titleTop = ay + ah * 0.03;
   const titleAvail = titleH - ah * 0.06;
-  let titleSize = base * 0.115;
-  let tagSize = base * 0.05;
-  {
-    const blockH = titleSize * (state.title2 ? 1.9 : 1.1);
-    const need = blockH + tagSize * 1.5;
-    if (need > titleAvail) {
-      const s = titleAvail / need;
-      titleSize *= s;
-      tagSize *= s;
-    }
-  }
-  const tRes = drawTitleBlock(ctx, ax, titleTop, aw, state.title1, state.title2, titleSize, '#ffffff', titleAvail * 0.66);
-  const tagTop = Math.min(tRes.bottom + base * 0.04, py - tagSize * 0.5);
-  drawTagline(ctx, ax, tagTop, aw, state.tagline, tagSize, '#ffd97a');
+  drawTitleBlock(ctx, ax, titleTop, aw, state.title1, state.title2, state.kicker, state.tagline, aw, ah, titleAvail);
 
   drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff');
 
@@ -432,11 +503,12 @@ export function createDefaultState(photos) {
   return {
     layout: 'hero3',
     grade: 'sunset',
-    title1: 'VICE',
-    title2: 'CITY',
+    title1: 'NEON',
+    title2: 'COAST',
+    kicker: 'PALM BEACH, 1986',
     tagline: 'The sun never sets on the heist.',
-    caption: 'Sunset Heist',
-    price: '$59.99',
+    caption: 'HEIST SEASON',
+    price: '$9.99',
     frame: true,
     grain: true,
     halftone: true,

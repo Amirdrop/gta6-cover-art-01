@@ -34,6 +34,7 @@ const els = {
   grade: $('grade'),
   title1: $('title1'),
   title2: $('title2'),
+  kicker: $('kicker'),
   tagline: $('tagline'),
   caption: $('caption'),
   price: $('price'),
@@ -197,7 +198,7 @@ els.grade.addEventListener('change', () => {
 });
 
 // texts
-['title1', 'title2', 'tagline', 'caption', 'price'].forEach((key) => {
+['kicker', 'title1', 'title2', 'tagline', 'caption', 'price'].forEach((key) => {
   els[key].addEventListener('input', () => {
     state[key] = els[key].value;
     redraw();
@@ -322,8 +323,11 @@ document.addEventListener('keydown', (e) => {
 
 // ---- shot support (screenshots) ----
 // Renders the cover offscreen at the shot size and exposes it on window.__shotCanvas.
-async function renderShotCover() {
-  const w = 1080, h = 1350;
+async function renderShotCover(size) {
+  let w = 1080, h = 1350;
+  if (size === 'square') { w = 1080; h = 1080; }
+  else if (size === 'wide') { w = 1920; h = 1080; }
+  else { w = 1080; h = 1350; }
   offscreen.width = w;
   offscreen.height = h;
   drawCover(exportCtx, state);
@@ -349,7 +353,7 @@ async function applyShot() {
         renderGallery();
         syncPanelControls();
         redraw();
-        await renderShotCover();
+        await renderShotCover(texts.size);
       } else {
         // ?shot=editor (and any other shot): apply the single sample photo as before.
         const img = await loadImage(sample);
