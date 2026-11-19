@@ -5,9 +5,9 @@
 // Layout definitions: each panel is a normalized [x, y, w, h] rect within the artwork photo area.
 const LAYOUTS = {
   grid3: [
-    [0.0, 0.0, 1 / 3, 0.36], [1 / 3, 0.0, 1 / 3, 0.36], [2 / 3, 0.0, 1 / 3, 0.36],
-    [0.0, 0.36, 1 / 3, 0.28], [1 / 3, 0.36, 1 / 3, 0.28], [2 / 3, 0.36, 1 / 3, 0.28],
-    [0.0, 0.64, 1 / 3, 0.36], [1 / 3, 0.64, 1 / 3, 0.36], [2 / 3, 0.64, 1 / 3, 0.36],
+    [0.0, 0.0, 0.330667, 0.35712], [0.334667, 0.0, 0.330667, 0.35712], [0.669333, 0.0, 0.330667, 0.35712],
+    [0.0, 0.36112, 0.330667, 0.27776], [0.334667, 0.36112, 0.330667, 0.27776], [0.669333, 0.36112, 0.330667, 0.27776],
+    [0.0, 0.64288, 0.330667, 0.35712], [0.334667, 0.64288, 0.330667, 0.35712], [0.669333, 0.64288, 0.330667, 0.35712],
   ],
   hero3: [
     [0.0, 0.0, 0.58, 1.0],
@@ -20,9 +20,9 @@ const LAYOUTS = {
     [0.67, 0.0, 0.33, 1.0],
   ],
   duo: [
-    [0.0, 0.0, 0.5, 0.55],
-    [0.5, 0.0, 0.5, 0.55],
-    [0.0, 0.55, 0.5, 0.45], [0.5, 0.55, 0.5, 0.45],
+    [0.0, 0.0, 0.498, 0.5478],
+    [0.502, 0.0, 0.498, 0.5478],
+    [0.0, 0.5518, 0.498, 0.4482], [0.502, 0.5518, 0.498, 0.4482],
   ],
   full: [
     [0.0, 0.0, 1.0, 1.0],
@@ -88,11 +88,13 @@ const GRADES = {
     name: 'Sunset',
     pixel: gradeSunset,
     halftone: 'rgba(255, 200, 120, 1)',
+    accent: 'orange',
   },
   neon: {
     name: 'Neon',
     pixel: gradeNeon,
     halftone: 'rgba(120, 255, 255, 1)',
+    accent: 'magenta',
   },
   mono: {
     name: 'Mono',
@@ -234,7 +236,7 @@ function drawTracked(ctx, text, cx, top, size, tracking, color) {
 // each line to 15% of the cover height. Returns { top, bottom, size } so the caller can prove the
 // group stays inside the frame's inner rect.
 export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, coverW, coverH, maxH) {
-  const lines = [line1 || '', line2 || ''].filter((l) => l.trim());
+  const lines = [line1 || '', line2 || ''].filter((l) => l.trim()).map((l) => l.toUpperCase());
   if (!lines.length) return { top: y, bottom: y, size: 0 };
   ctx.save();
   ctx.textAlign = 'center';
@@ -279,7 +281,7 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
 
   // Kicker, letterspaced, above the title.
   if (hasK) {
-    drawTracked(ctx, kicker.trim(), px, cursor, kickerH, kickerH * 0.22, '#f7e6b0');
+    drawTracked(ctx, kicker.trim().toUpperCase(), px, cursor, kickerH, kickerH * 0.22, '#f7e6b0');
     cursor += kickerH + gap12;
   }
 
@@ -361,7 +363,7 @@ export function drawTagline(ctx, x, y, w, text, size, color) {
 }
 
 // Bottom caption band: dark gradient with the caption in white Anton.
-export function drawCaptionBand(ctx, x, y, w, h, text, color) {
+export function drawCaptionBand(ctx, x, y, w, h, text, color, accent) {
   ctx.save();
   const g = ctx.createLinearGradient(x, y, x, y + h);
   g.addColorStop(0, 'rgba(0,0,0,0.05)');
@@ -373,6 +375,7 @@ export function drawCaptionBand(ctx, x, y, w, h, text, color) {
   ctx.textBaseline = 'middle';
   const txt = (text || '').toUpperCase();
   if (!txt) { ctx.restore(); return; }
+  if (accent) drawCaptionGlow(ctx, x, y, w, h, accent);
   let size = 0.6 * h;
   ctx.font = `900 ${size}px Anton, sans-serif`;
   while (ctx.measureText(txt).width > w * 0.8 && size > 12) {
@@ -383,6 +386,20 @@ export function drawCaptionBand(ctx, x, y, w, h, text, color) {
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 6;
   ctx.fillText(txt, x + w / 2, y + h / 2 + h * 0.04);
+  ctx.restore();
+}
+
+// Bottom caption band glow: a subtle gradient glow in the grade's accent color, behind the
+// caption text. Band spans 1.5x the caption height and fades upward at 12% alpha.
+function drawCaptionGlow(ctx, x, y, w, h, accent) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const gy = y + h - h * 1.5;
+  const gg = ctx.createLinearGradient(x, gy, x, y + h);
+  gg.addColorStop(0, `rgba(255, 128, 40, 0)`);
+  gg.addColorStop(1, accent === 'magenta' ? 'rgba(255, 0, 230, 0.12)' : 'rgba(255, 128, 40, 0.12)');
+  ctx.fillStyle = gg;
+  ctx.fillRect(x, gy, w, h * 1.5);
   ctx.restore();
 }
 
@@ -496,6 +513,14 @@ export function drawCover(ctx, state) {
     // Grade each panel rect right after it is drawn (before compositing) so the
     // per-pixel pass stays cheap even at full export resolution.
     applyGrade(ctx, rx, ry, rw, rh, grade);
+    // Duo and grid layouts: crisp 2px dark border around each panel against the gutters.
+    if (layout === 'duo' || layout === 'grid3') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rx + 1, ry + 1, rw - 2, rh - 2);
+      ctx.restore();
+    }
   }
 
   if (state.halftone) drawHalftone(ctx, px, py, pw, ph, grade);
@@ -506,7 +531,7 @@ export function drawCover(ctx, state) {
   const titleAvail = titleH - ah * 0.06;
   drawTitleBlock(ctx, ax, titleTop, aw, state.title1, state.title2, state.kicker, state.tagline, aw, ah, titleAvail);
 
-  drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff');
+  drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff', grade.accent);
 
   if (state.frame) drawFrame(ctx, 0, 0, w, h, '#e8e4da');
 

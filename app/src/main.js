@@ -14,9 +14,9 @@ import { runShot } from './shots.js';
 const PREVIEW_SIZE = 900;
 const SAMPLE_SOURCES = ['samples/boulevard.jpg', 'samples/pier.jpg'];
 const EXPORT_SIZES = [
-  { label: '1080 x 1080', name: 'vice-cover-square.png', w: 1080, h: 1080 },
-  { label: '1080 x 1350', name: 'vice-cover-portrait.png', w: 1080, h: 1350 },
-  { label: '1920 x 1080', name: 'vice-cover-landscape.png', w: 1920, h: 1080 },
+  { label: '1080 x 1080', name: 'vice-cover-1080x1080.png', w: 1080, h: 1080 },
+  { label: '1080 x 1350', name: 'vice-cover-1080x1350.png', w: 1080, h: 1350 },
+  { label: '1920 x 1080', name: 'vice-cover-1920x1080.png', w: 1920, h: 1080 },
 ];
 
 const canvas = document.getElementById('cover');
@@ -249,7 +249,7 @@ function exportAt(w, h, name) {
   offscreen.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = name || 'vice-cover.png';
+    a.download = name || `vice-cover-${w}x${h}.png`;
     a.click();
     els.status.textContent = `Saved ${a.download} (${w} x ${h})`;
   }, 'image/png');
