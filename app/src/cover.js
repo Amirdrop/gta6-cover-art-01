@@ -261,15 +261,11 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
   const titleH = lh * lines.length;
   const groupH = kickerH + gap1 + titleH + gap2 + tagH;
 
-  // Shrink the title font so the whole group fits the band (kicker/tagline stay fixed size).
-  if (maxH != null && groupH > maxH) {
-    const perFs = lh / fs * lines.length + gap1 / fs + gap2 / fs;
-    const availForFs = Math.max(1, maxH - kickerH - tagH);
-    fs = Math.max(6, Math.min(fs, availForFs / perFs));
-  }
+  // Title-priority auto-fit: the width-based font size is kept as-is and the group is
+  // laid out around it, rather than shrinking the title to squeeze the group into the band.
   fs = Math.max(6, fs);
 
-  // Recompute dependent sizes after any font rescale.
+  // Recompute dependent sizes (font scale already fixed above).
   const lh2 = fs * 0.86;
   const gap12 = hasK ? fs * 0.16 : 0;
   const gap22 = hasT ? fs * 0.28 : 0;
@@ -377,8 +373,8 @@ export function drawFrame(ctx, x, y, w, h, color) {
 }
 
 // "DAY ONE" price sticker badge: a circular white disc with a thin dark ring, an orange sunburst of
-// triangular rays behind it, '9.99' on a black bar across the middle, and a small 'DAY ONE' caption
-// above. No star shape anywhere.
+// triangular rays behind it, the price on a rounded pill across the middle, and a small 'DAY ONE'
+// caption above. No star shape anywhere.
 export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -406,16 +402,29 @@ export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
   ctx.strokeStyle = '#16161a';
   ctx.stroke();
 
-  // Black bar across the middle.
+  // Price pill: rounded black capsule centred over the disc, holding the price text.
+  const pill = label || '9.99';
   ctx.fillStyle = '#101014';
-  ctx.fillRect(-size * 1.35, -size * 0.3, size * 2.7, size * 0.6);
-
-  // Price on the bar.
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `900 ${size * 0.62}px Anton, sans-serif`;
+  ctx.font = `900 ${size * 0.6}px Anton, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('9.99', 0, size * 0.02);
+  const pillW = Math.min(size * 2.0, ctx.measureText(pill).width + size * 0.5);
+  const pillH = size * 0.58;
+  const pillX = -pillW / 2;
+  const pillY = -pillH / 2;
+  ctx.beginPath();
+  const pillR = pillH / 2;
+  ctx.moveTo(pillX + pillR, pillY);
+  ctx.lineTo(pillX + pillW - pillR, pillY);
+  ctx.arc(pillX + pillW - pillR, pillY + pillH / 2, pillR, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(pillX + pillR, pillY + pillH);
+  ctx.arc(pillX + pillR, pillY + pillH / 2, pillR, Math.PI / 2, Math.PI * 1.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Price text inside the pill.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(pill, 0, size * 0.02);
 
   // Small "DAY ONE" caption above the disc.
   ctx.fillStyle = '#16161a';
@@ -435,7 +444,7 @@ export function drawCover(ctx, state) {
   ctx.fillStyle = '#0c0d12';
   ctx.fillRect(0, 0, w, h);
 
-  const titleH = ah * 0.21;
+  const titleH = ah * 0.30;
   const capH = ah * 0.13;
   const px = ax, py = ay + titleH, pw = aw, ph = ah - titleH - capH;
   const base = Math.min(aw, ah);
@@ -474,7 +483,7 @@ export function drawCover(ctx, state) {
 
   if (state.frame) drawFrame(ctx, 0, 0, w, h, '#e8e4da');
 
-  drawBadge(ctx, w - aw * 0.1, h - ah * 0.125, base * 0.09, '#ff3b30', '#ffffff', state.price);
+  drawBadge(ctx, w - aw * 0.1, h - ah * 0.125, base * 0.07, '#ff3b30', '#ffffff', state.price);
 }
 
 // Assigns photos across a layout's panels, seeding each panel with the default upper-middle pan.
