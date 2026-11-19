@@ -3,20 +3,115 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cover Snap</title>
+<title>Vice Studio — Cover Art Maker</title>
 <link rel="stylesheet" href="./style.css">
+<style>
+@font-face {
+  font-family: 'Anton';
+  src: url('./fonts/Anton-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pacifico';
+  src: url('./fonts/Pacifico-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+</style>
 </head>
 <body>
-<main class="app">
-  <section class="controls">
-    <h1>Cover Snap</h1>
-    <p>A photo and a caption, made into a square cover.</p>
-    <label>Photo <input id="photo" type="file" accept="image/*"></label>
-    <label>Caption <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
-    <button id="export" type="button">Export PNG 1080 x 1080</button>
-    <p id="status" role="status"></p>
+<main class="studio">
+  <aside class="toolbar">
+    <div class="brand">
+      <div class="brandMark">★</div>
+      <div class="brandText">
+        <h1>VICE STUDIO</h1>
+        <p>cover art maker</p>
+      </div>
+    </div>
+    <nav class="toolNav">
+      <button id="btnPhotos" type="button" class="tool active" data-panel="photos">📷 Photos</button>
+      <button id="btnLayout" type="button" class="tool" data-panel="layout">🧩 Layout</button>
+      <button id="btnText" type="button" class="tool" data-panel="text">✏️ Title &amp; Text</button>
+      <button id="btnEffects" type="button" class="tool" data-panel="effects">🎨 Grade &amp; FX</button>
+      <button id="btnExport" type="button" class="tool" data-panel="export">💾 Export</button>
+    </nav>
+  </aside>
+
+  <section class="stage">
+    <div class="stageLabel">LIVE PREVIEW</div>
+    <div class="canvasWrap">
+      <canvas id="cover" width="900" height="900" aria-label="The cover preview"></canvas>
+    </div>
   </section>
-  <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
+
+  <aside class="controls" id="controls">
+    <form id="panel-photos" class="ctrlPanel">
+      <h2>Photos</h2>
+      <button id="uploadBtn" type="button" class="primary">Upload photo(s)</button>
+      <input id="photoInput" type="file" accept="image/*" multiple hidden>
+      <div class="gallery" id="gallery"></div>
+      <p class="hint">Click a thumbnail to assign it to the selected panel.</p>
+    </form>
+
+    <form id="panel-layout" class="ctrlPanel hidden">
+      <h2>Layout</h2>
+      <label>Layout
+        <select id="layout">
+          <option value="hero3">Hero + Stack (3)</option>
+          <option value="grid3">Grid (3 x 3)</option>
+          <option value="filmstrip">Filmstrip (3)</option>
+          <option value="duo">Duo (4)</option>
+          <option value="full">Full Bleed</option>
+        </select>
+      </label>
+      <h3>Panel Photo</h3>
+      <label>Panel
+        <select id="panelSelect"></select>
+      </label>
+      <div class="row">
+        <button id="shuffle" type="button">Shuffle photos</button>
+        <button id="onePhoto" type="button">One photo all</button>
+      </div>
+      <h3>Pan / Zoom</h3>
+      <label>Pan X <input id="panX" type="range" min="-1" max="1" step="0.01" value="0"></label>
+      <label>Pan Y <input id="panY" type="range" min="-1" max="1" step="0.01" value="0"></label>
+      <label>Zoom <input id="zoom" type="range" min="0.5" max="3" step="0.05" value="1"></label>
+    </form>
+
+    <form id="panel-text" class="ctrlPanel hidden">
+      <h2>Title &amp; Text</h2>
+      <label>Title line 1 <input id="title1" type="text" maxlength="14" value="VICE"></label>
+      <label>Title line 2 <input id="title2" type="text" maxlength="14" value="CITY"></label>
+      <label>Tagline <input id="tagline" type="text" maxlength="40" value="The sun never sets on the heist."></label>
+      <label>Caption <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
+      <label>Price badge <input id="price" type="text" maxlength="8" value="$59.99"></label>
+    </form>
+
+    <form id="panel-effects" class="ctrlPanel hidden">
+      <h2>Grade &amp; FX</h2>
+      <label>Color grade
+        <select id="grade">
+          <option value="sunset">Sunset</option>
+          <option value="neon">Neon</option>
+          <option value="mono">Mono</option>
+          <option value="teal">Teal-Orange</option>
+        </select>
+      </label>
+      <label class="check"><input id="toggleFrame" type="checkbox" checked> Frame border</label>
+      <label class="check"><input id="toggleGrain" type="checkbox" checked> Film grain</label>
+      <label class="check"><input id="toggleHalftone" type="checkbox" checked> Halftone dots</label>
+      <label class="check"><input id="toggleVignette" type="checkbox" checked> Vignette</label>
+    </form>
+
+    <form id="panel-export" class="ctrlPanel hidden">
+      <h2>Export</h2>
+      <p class="hint">Render is drawn offline at high resolution — no network, no upload.</p>
+      <button id="exportBtn" type="button" class="primary">Export PNG</button>
+      <p id="status" role="status"></p>
+    </form>
+  </aside>
 </main>
 <script type="module" src="./src/main.js"></script>
 </body>

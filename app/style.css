@@ -1,12 +1,345 @@
-html, body { margin: 0; height: 100%; background: #f2f0f4; color: #1d1b22; font: 15px/1.4 system-ui, sans-serif; }
-.app { display: flex; gap: 32px; align-items: center; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box; }
-.controls { display: flex; flex-direction: column; gap: 14px; width: 280px; }
-.controls h1 { margin: 0; font-size: 28px; }
-.controls p { margin: 0; color: #5c5866; }
-label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
-input[type=text] { font: inherit; padding: 8px; border: 1px solid #c9c4d1; border-radius: 6px; }
-button { font: inherit; font-weight: 700; padding: 10px; border: 0; border-radius: 6px; background: #1d1b22; color: #fff; cursor: pointer; }
-canvas { width: min(70vh, 60vw); height: min(70vh, 60vw); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2); }
-body.shot-cover .controls { display: none; }
-body.shot-cover .app { padding: 0; }
-body.shot-cover canvas { width: 100vw; height: 100vh; box-shadow: none; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0c0d12;
+  color: #e8e4da;
+  font: 14px/1.5 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  background:
+    radial-gradient(1200px 700px at 15% -10%, rgba(255, 60, 120, 0.14), transparent 60%),
+    radial-gradient(1100px 800px at 110% 15%, rgba(20, 220, 255, 0.10), transparent 55%),
+    #0c0d12;
+}
+
+.studio {
+  display: grid;
+  grid-template-columns: 200px 1fr 320px;
+  gap: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- toolbar ---------- */
+.toolbar {
+  background: #13141c;
+  border-right: 1px solid #262936;
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.brandMark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ff3b30, #ffb347);
+  color: #fff;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 16px rgba(255, 60, 60, 0.4);
+}
+
+.brandText h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 1px;
+  font-weight: 900;
+  font-family: 'Anton', 'Arial Black', sans-serif;
+}
+
+.brandText p {
+  margin: 0;
+  font-size: 11px;
+  color: #8b8fa3;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.toolNav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool {
+  background: transparent;
+  color: #a7aabe;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tool:hover {
+  background: #1c1e29;
+  color: #fff;
+}
+
+.tool.active {
+  background: linear-gradient(90deg, rgba(255, 59, 48, 0.25), rgba(255, 150, 40, 0.12));
+  border-color: rgba(255, 100, 60, 0.4);
+  color: #ffd9b3;
+  font-weight: 700;
+}
+
+/* ---------- stage ---------- */
+.stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.stageLabel {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #6b7088;
+  text-transform: uppercase;
+}
+
+.canvasWrap {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.canvasWrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+#cover {
+  width: min(78vh, 62vw);
+  height: min(78vh, 62vw);
+  background: #000;
+  border-radius: 6px;
+  display: block;
+}
+
+/* ---------- controls panel ---------- */
+.controls {
+  background: #13141c;
+  border-left: 1px solid #262936;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.ctrlPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ctrlPanel.hidden {
+  display: none;
+}
+
+.ctrlPanel h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: #ffb347;
+  font-family: 'Anton', sans-serif;
+}
+
+.ctrlPanel h3 {
+  margin: 6px 0 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #8b8fa3;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: #b9bccd;
+  font-weight: 600;
+}
+
+label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+input[type=text], select {
+  font: inherit;
+  color: #e8e4da;
+  background: #1b1d27;
+  border: 1px solid #2c3040;
+  border-radius: 6px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+input[type=text]:focus, select:focus {
+  border-color: #ffb347;
+}
+
+input[type=range] {
+  accent-color: #ffb347;
+  width: 100%;
+  cursor: pointer;
+}
+
+input[type=checkbox] {
+  accent-color: #ff3b30;
+  width: 16px;
+  height: 16px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #ff3b30, #ffb347);
+  color: #140d0a;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(255, 60, 60, 0.3);
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+.row button {
+  background: #1b1d27;
+  color: #e8e4da;
+  border: 1px solid #2c3040;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 1;
+}
+
+.row button:hover {
+  border-color: #ffb347;
+  color: #ffd9b3;
+}
+
+.hint {
+  margin: 0;
+  font-size: 11px;
+  color: #6b7088;
+  line-height: 1.5;
+}
+
+#status {
+  margin: 0;
+  font-size: 12px;
+  color: #6dffa8;
+  min-height: 18px;
+}
+
+/* ---------- gallery ---------- */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 8px;
+}
+
+.thumbWrap {
+  background: transparent;
+  border: 1px solid #2c3040;
+  border-radius: 6px;
+  padding: 2px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.thumbWrap:hover {
+  border-color: #ffb347;
+}
+
+.thumbWrap:active .thumb {
+  opacity: 0.7;
+}
+
+.thumb {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+
+.galleryHint {
+  grid-column: 1 / -1;
+  color: #6b7088;
+  font-size: 12px;
+}
+
+/* ---------- shot-cover: full-bleed screenshot ---------- */
+body.shot-cover .studio {
+  display: block;
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.shot-cover .toolbar,
+body.shot-cover .controls {
+  display: none;
+}
+
+body.shot-cover .stage {
+  padding: 0;
+  height: 100vh;
+  justify-content: stretch;
+}
+
+body.shot-cover .stageLabel {
+  display: none;
+}
+
+body.shot-cover .canvasWrap {
+  max-width: none;
+  max-height: none;
+}
+
+body.shot-cover #cover {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+}
+
+@media (max-width: 1100px) {
+  .studio {
+    grid-template-columns: 72px 1fr 300px;
+  }
+  .brandText, .tool {
+    font-size: 12px;
+  }
+}
