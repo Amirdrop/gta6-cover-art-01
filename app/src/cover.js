@@ -307,12 +307,38 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
   // Tagline, Pacifico, under the title.
   if (hasT) {
     const ty = cursor + titleH2 + gap22;
+    const tag = tagline.trim();
+    ctx.font = `${tagH}px Pacifico, cursive`;
+    const textW = ctx.measureText(tag).width;
+    const tagX = px - textW / 2;
+
+    // Soft dark shadow so it stays legible over bright photo areas.
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 3;
+    ctx.shadowOffsetX = 3;
+    ctx.fillStyle = '#ffd97a';
+    ctx.fillText(tag, px, ty);
+    ctx.restore();
+
+    // Subtle dark rounded scrim pill behind the tagline text.
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    const padX = tagH * 0.55;
+    const padY = tagH * 0.18;
+    const pillW = textW + padX * 2;
+    const pillH = tagH + padY * 2;
+    const rx = Math.min(pillH * 0.6, pillH);
+    ctx.roundRect(tagX - padX, ty - tagH * 0.25 - padY, pillW, pillH, rx);
+    ctx.fill();
+    ctx.restore();
+
+    // Draw the tagline on top of the scrim.
     ctx.font = `${tagH}px Pacifico, cursive`;
     ctx.fillStyle = '#ffd97a';
-    ctx.shadowColor = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur = tagH * 0.3;
-    ctx.shadowOffsetY = 2;
-    ctx.fillText(tagline, px, ty);
+    ctx.fillText(tag, px, ty);
   }
 
   ctx.restore();
