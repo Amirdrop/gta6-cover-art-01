@@ -42,3 +42,5 @@ writeFileSync(
     app_path_max_bytes: 1000,
   }),
 );
+
+console.log(`built cover studio in ${out}: ${appFiles} app files, ${screens} screenshots copied`);
