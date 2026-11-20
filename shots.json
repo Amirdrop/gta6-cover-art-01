@@ -1,6 +1,6 @@
 [
-  { "name": "1-cover.jpg", "query": "?shot=cover&photo=pier&layout=hero3&caption=Sunset%20Heist", "w": 1024, "h": 1280 },
-  { "name": "2-editor.jpg", "query": "?shot=editor&photo=boulevard&layout=hero3&caption=Boulevard%20Queen", "w": 1280, "h": 720 },
-  { "name": "3-neon-square.jpg", "query": "?shot=cover&photo=boulevard&layout=filmstrip&grade=neon&kicker=OCEAN%20DRIVE%201984&title1=NIGHT&title2=SHIFT&tagline=Neon%20never%20sleeps.&caption=NEON%20NIGHTS", "w": 1080, "h": 1080 },
-  { "name": "4-wide.jpg", "query": "?shot=cover&photo=boulevard&layout=full&size=wide&caption=VICE%20STUDIO", "w": 1280, "h": 720 }
+  { "name": "1-cover.jpg", "query": "?shot=cover&photo=pier&layout=hero3&grade=vice&caption=Sunset%20Heist", "w": 1024, "h": 1280 },
+  { "name": "2-editor.jpg", "query": "?shot=editor&photo=boulevard&layout=hero3&grade=vice&caption=Boulevard%20Queen", "w": 1280, "h": 720 },
+  { "name": "3-neon-square.jpg", "query": "?shot=cover&photo=boulevard&layout=filmstrip&grade=vice&kicker=OCEAN%20DRIVE%201984&title1=NIGHT&title2=SHIFT&tagline=Neon%20never%20sleeps.&caption=NEON%20NIGHTS", "w": 1080, "h": 1080 },
+  { "name": "4-wide.jpg", "query": "?shot=cover&photo=boulevard&layout=full&grade=vice&size=wide&caption=VICE%20STUDIO", "w": 1280, "h": 720 }
 ]

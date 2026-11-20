@@ -75,6 +75,35 @@ function gradeNeon(r, g, b) {
   return [clamp255(nr), clamp255(ng), clamp255(nb)];
 }
 
+// Vice duotone: hot-magenta shadows through violet midtones to cyan-highlighted
+// brights — the classic GTA VI Vice palette push. Saturation up ~35%.
+function gradeVice(r, g, b) {
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  const s = lum / 255;
+  // Duotone ramp: magenta (#ff2d9b) shadows -> violet (#8a3cff) mids -> cyan (#3ee6ff) highlights.
+  const stops = [
+    [0.0, 40, 4, 60],
+    [0.35, 255, 45, 155],
+    [0.7, 138, 60, 255],
+    [1.0, 62, 230, 255],
+  ];
+  let lo = stops[0], hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (s >= stops[i][0] && s <= stops[i + 1][0]) { lo = stops[i]; hi = stops[i + 1]; break; }
+  }
+  const t = hi[0] === lo[0] ? 0 : (s - lo[0]) / (hi[0] - lo[0]);
+  let nr = lo[1] + (hi[1] - lo[1]) * t;
+  let ng = lo[2] + (hi[2] - lo[2]) * t;
+  let nb = lo[3] + (hi[3] - lo[3]) * t;
+  // Keep ~30% of the original luminance detail so faces don't flatten.
+  nr = nr * 0.7 + lum * 0.3;
+  ng = ng * 0.7 + lum * 0.3;
+  nb = nb * 0.7 + lum * 0.3;
+  nr = (nr - 128) * 1.15 + 128;
+  nb = (nb - 128) * 1.15 + 128;
+  return [clamp255(nr), clamp255(ng), clamp255(nb)];
+}
+
 // High-contrast black & white with a warm paper tint.
 function gradeMono(r, g, b) {
   let lum = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -94,6 +123,12 @@ const GRADES = {
     name: 'Neon',
     pixel: gradeNeon,
     halftone: 'rgba(120, 255, 255, 1)',
+    accent: 'magenta',
+  },
+  vice: {
+    name: 'Vice Duotone',
+    pixel: gradeVice,
+    halftone: 'rgba(62, 230, 255, 1)',
     accent: 'magenta',
   },
   mono: {
@@ -263,16 +298,29 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
   const titleH = lh * lines.length;
   const groupH = kickerH + gap1 + titleH + gap2 + tagH;
 
-  // Title-priority auto-fit: the width-based font size is kept as-is and the group is
-  // laid out around it, rather than shrinking the title to squeeze the group into the band.
-  fs = Math.max(6, fs);
-
-  // Recompute dependent sizes (font scale already fixed above).
-  const lh2 = fs * 0.86;
-  const gap12 = hasK ? fs * 0.16 : 0;
-  const gap22 = hasT ? fs * 0.28 : 0;
+  // Band-fit auto-fit: the width-based font size is kept unless the whole group
+  // (kicker + title + tagline) would overflow the band height — then the whole
+  // group scales down so it always fits its zone. Guarantees no vertical clipping.
+  const fs2 = fs;
+  const lh2 = fs2 * 0.86;
+  const gap12 = hasK ? fs2 * 0.16 : 0;
+  const gap22 = hasT ? fs2 * 0.28 : 0;
   const titleH2 = lh2 * lines.length;
-  const groupH2 = kickerH + gap12 + titleH2 + gap22 + tagH;
+  let kickerH2 = kickerH, tagH2 = tagH;
+  let groupH2 = kickerH2 + gap12 + titleH2 + gap22 + tagH2;
+  if (maxH != null && groupH2 > maxH) {
+    const factor = maxH / groupH2;
+    fs = Math.max(6, fs2 * factor);
+    kickerH2 = Math.max(4, kickerH2 * factor);
+    tagH2 = Math.max(6, tagH2 * factor);
+    const lh3 = fs * 0.86;
+    const gap13 = hasK ? fs * 0.16 : 0;
+    const gap23 = hasT ? fs * 0.28 : 0;
+    groupH2 = kickerH2 + gap13 + lh3 * lines.length + gap23 + tagH2;
+    var lhFinal = lh3, gap1Final = gap13, gap2Final = gap23;
+  } else {
+    var lhFinal = lh2, gap1Final = gap12, gap2Final = gap22;
+  }
 
   // Vertically centre the whole group inside the band.
   let top = y;
@@ -281,13 +329,13 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
 
   // Kicker, letterspaced, above the title.
   if (hasK) {
-    drawTracked(ctx, kicker.trim().toUpperCase(), px, cursor, kickerH, kickerH * 0.22, '#f7e6b0');
-    cursor += kickerH + gap12;
+    drawTracked(ctx, kicker.trim().toUpperCase(), px, cursor, kickerH2, kickerH2 * 0.22, '#f7e6b0');
+    cursor += kickerH2 + gap1Final;
   }
 
   // Title lines: white fill, thin black outline, hard offset shadow, skewed -4deg.
   lines.forEach((line, i) => {
-    const ty = cursor + i * lh2;
+    const ty = cursor + i * lhFinal;
     ctx.font = fontFor(fs);
     ctx.save();
     ctx.translate(px, ty);
@@ -308,10 +356,17 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
 
   // Tagline, Pacifico, under the title.
   if (hasT) {
-    const ty = cursor + titleH2 + gap22;
+    const ty = cursor + lhFinal * lines.length + gap2Final;
     const tag = tagline.trim();
-    ctx.font = `${tagH}px Pacifico, cursive`;
-    const textW = ctx.measureText(tag).width;
+    let tagSize = tagH2;
+    ctx.font = `${tagSize}px Pacifico, cursive`;
+    let textW = ctx.measureText(tag).width;
+    // Fit-check: shrink the tagline so it never exceeds the band width.
+    while (textW > w * 0.86 && tagSize > 6) {
+      tagSize -= 1;
+      ctx.font = `${tagSize}px Pacifico, cursive`;
+      textW = ctx.measureText(tag).width;
+    }
     const tagX = px - textW / 2;
 
     // Soft dark shadow so it stays legible over bright photo areas.
@@ -328,23 +383,36 @@ export function drawTitleBlock(ctx, x, y, w, line1, line2, kicker, tagline, cove
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    const padX = tagH * 0.55;
-    const padY = tagH * 0.18;
+    const padX = tagSize * 0.55;
+    const padY = tagSize * 0.18;
     const pillW = textW + padX * 2;
-    const pillH = tagH + padY * 2;
+    const pillH = tagSize + padY * 2;
     const rx = Math.min(pillH * 0.6, pillH);
-    ctx.roundRect(tagX - padX, ty - tagH * 0.25 - padY, pillW, pillH, rx);
+    ctx.roundRect(tagX - padX, ty - tagSize * 0.25 - padY, pillW, pillH, rx);
     ctx.fill();
     ctx.restore();
 
     // Draw the tagline on top of the scrim.
-    ctx.font = `${tagH}px Pacifico, cursive`;
+    ctx.font = `${tagSize}px Pacifico, cursive`;
     ctx.fillStyle = '#ffd97a';
     ctx.fillText(tag, px, ty);
   }
 
   ctx.restore();
-  return { top, bottom: top + groupH2, size: fs };
+  // Measured box of the whole title group, so the caller's overlap guard can prove
+  // it never intersects the lockup, caption or badge boxes. The widest title line
+  // plus a margin for the skew/shadow bounds the horizontal extent.
+  let widest = 0;
+  ctx.font = fontFor(fs);
+  for (const l of lines) widest = Math.max(widest, ctx.measureText(l).width);
+  const pad = fs * 0.12;
+  return {
+    top: Math.max(0, top - pad),
+    bottom: Math.min(ctx.canvas.height, top + groupH2 + pad),
+    left: Math.max(0, px - widest / 2 - pad),
+    right: Math.min(ctx.canvas.width, px + widest / 2 + pad),
+    size: fs,
+  };
 }
 
 // Pacifico script tagline under the title.
@@ -378,7 +446,7 @@ export function drawCaptionBand(ctx, x, y, w, h, text, color, accent) {
   if (accent) drawCaptionGlow(ctx, x, y, w, h, accent);
   let size = 0.6 * h;
   ctx.font = `900 ${size}px Anton, sans-serif`;
-  while (ctx.measureText(txt).width > w * 0.8 && size > 12) {
+  while (ctx.measureText(txt).width > w * 0.58 && size > 12) {
     size -= 1;
     ctx.font = `900 ${size}px Anton, sans-serif`;
   }
@@ -386,7 +454,18 @@ export function drawCaptionBand(ctx, x, y, w, h, text, color, accent) {
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 6;
   ctx.fillText(txt, x + w / 2, y + h / 2 + h * 0.04);
+  // Measured caption text box for the caller's overlap guard (fit-check: the text
+  // is already shrunk to ≤ 70% of the band width below, and the badge sits outside
+  // that budget).
+  const textW = ctx.measureText(txt).width;
   ctx.restore();
+  return {
+    top: y + h / 2 - size * 0.65,
+    bottom: y + h / 2 + size * 0.85,
+    left: x + w / 2 - textW / 2 - size * 0.1,
+    right: x + w / 2 + textW / 2 + size * 0.1,
+    size,
+  };
 }
 
 // Bottom caption band glow: a subtle gradient glow in the grade's accent color, behind the
@@ -475,6 +554,15 @@ export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
   ctx.font = `900 ${size * 0.34}px Anton, sans-serif`;
   ctx.fillText('DAY ONE', 0, -size * 0.98);
   ctx.restore();
+  // Measured badge box for the caller's overlap guard: the ray disc plus the
+  // DAY ONE caption above it (badge fills are decor, but the caption is text).
+  return {
+    top: cy - size * 1.25,
+    bottom: cy + size * 1.55,
+    left: cx - size * 1.55,
+    right: cx + size * 1.55,
+    size,
+  };
 }
 
 // GTA VI-style logo lockup: small-caps letterspaced "GRAND THEFT AUTO" over a huge neon "VI".
@@ -482,7 +570,7 @@ export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
 // "GRAND THEFT AUTO" spans ~60% of w and "VI" spans ~46% of w, and clamps the whole group so the
 // total lockup height fits the remaining canvas. Draws a soft glow (accent color) behind the
 // numerals so it pops over any photo.
-export function drawLogoLockup(ctx, cx, top, w, accent) {
+export function drawLogoLockup(ctx, cx, top, w, accent, maxH) {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -505,8 +593,9 @@ export function drawLogoLockup(ctx, cx, top, w, accent) {
   const gap = viSize * 0.22;
   const totalH = kSize + gap + viSize;
 
-  // Clamp the whole lockup as a unit so it fits the height remaining on the canvas from `top`.
-  const avail = Math.max(1, ctx.canvas.height - top);
+  // Clamp the whole lockup as a unit so it fits its own zone height (never bleeds
+  // into the title band below).
+  const avail = maxH != null ? Math.max(1, maxH) : Math.max(1, ctx.canvas.height - top);
   const scale = totalH > avail ? avail / totalH : 1;
   const vSize = viSize * scale;
   const kkSize = kSize * scale;
@@ -566,7 +655,18 @@ export function drawLogoLockup(ctx, cx, top, w, accent) {
   ctx.fillText(viText, cx, viTop);
   ctx.restore();
 
+  // Measured lockup box for the caller's overlap guard: kicker width bounds the
+  // horizontal extent; the glow/shadow pad the vertical and horizontal extents.
+  const lockupW = Math.min(w, measureTracked(ctx, kickerText, kkSize, kkTrack) * 1.15);
+  const lockupH = kkSize + gGap + vSize * 1.12;
   ctx.restore();
+  return {
+    top: Math.max(0, top - vSize * 0.05),
+    bottom: Math.min(ctx.canvas.height, top + lockupH),
+    left: Math.max(0, cx - lockupW / 2),
+    right: Math.min(ctx.canvas.width, cx + lockupW / 2),
+    size: vSize,
+  };
 }
 
 // Helper: width of a string drawn with letterspacing (tracking) at the given font size.
@@ -577,6 +677,66 @@ function measureTracked(ctx, text, size, tracking) {
   return total - tracking;
 }
 
+// Palm frond silhouette accent: a curved trunk with tapered frond strokes, drawn
+// as a dark silhouette. Decorative only (never part of the text-overlap guard).
+export function drawPalm(ctx, x, baseY, size, alpha, flip) {
+  ctx.save();
+  ctx.globalAlpha = alpha == null ? 0.32 : alpha;
+  ctx.strokeStyle = '#0a0812';
+  ctx.fillStyle = '#0a0812';
+  ctx.lineCap = 'round';
+  const dir = flip ? -1 : 1;
+  // Trunk: gentle curve leaning inward.
+  ctx.lineWidth = size * 0.055;
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  ctx.quadraticCurveTo(x + dir * size * 0.18, baseY - size * 0.45, x + dir * size * 0.34, baseY - size * 0.72);
+  ctx.stroke();
+  const crownX = x + dir * size * 0.34;
+  const crownY = baseY - size * 0.72;
+  // Fronds: 7 tapered arcs radiating from the crown.
+  const angles = [-2.5, -2.0, -1.4, -0.8, -0.25, 0.3, 0.85];
+  for (const a of angles) {
+    const len = size * (0.38 + Math.abs(Math.cos(a)) * 0.12);
+    const ex = crownX + Math.cos(a + (dir > 0 ? 0 : Math.PI)) * len * dir;
+    const ey = crownY + Math.sin(a) * len;
+    ctx.lineWidth = size * 0.045;
+    ctx.beginPath();
+    ctx.moveTo(crownX, crownY);
+    ctx.quadraticCurveTo(crownX + (ex - crownX) * 0.5, ey - size * 0.18, ex, ey);
+    ctx.stroke();
+    // Droop tip.
+    ctx.lineWidth = size * 0.028;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.quadraticCurveTo(ex + dir * size * 0.06, ey + size * 0.06, ex + dir * size * 0.12, ey + size * 0.14);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Render-time guard: asserts no two text boxes intersect. Throws on any violation
+// so an overlapping cover can never ship — the shoot script surfaces the throw.
+export function assertNoTextOverlap(boxes) {
+  const names = Object.keys(boxes).filter((k) => boxes[k] && boxes[k].bottom != null);
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) {
+      const a = boxes[names[i]], b = boxes[names[j]];
+      const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (overlapX > 1 && overlapY > 1) {
+        throw new Error(
+          `text-overlap guard: "${names[i]}" intersects "${names[j]}" by ` +
+          `${Math.round(overlapX)}x${Math.round(overlapY)}px ` +
+          `(a=[${Math.round(a.left)},${Math.round(a.top)},${Math.round(a.right)},${Math.round(a.bottom)}] ` +
+          `b=[${Math.round(b.left)},${Math.round(b.top)},${Math.round(b.right)},${Math.round(b.bottom)}])`,
+        );
+      }
+    }
+  }
+  return true;
+}
+
 // The top-level draw. `state` holds everything: layout, grade, photos, panels, texts, toggles.
 // `ctx` is a canvas context; the cover fills its whole area.
 export function drawCover(ctx, state) {
@@ -584,14 +744,26 @@ export function drawCover(ctx, state) {
   const h = ctx.canvas.height;
   const margin = state.frame ? Math.min(w, h) * 0.02 : 0;
   const ax = margin, ay = margin, aw = w - margin * 2, ah = h - margin * 2;
+  const base = Math.min(aw, ah);
 
   ctx.fillStyle = '#0c0d12';
   ctx.fillRect(0, 0, w, h);
 
-  const titleH = ah * 0.30;
-  const capH = ah * 0.13;
-  const px = ax, py = ay + titleH, pw = aw, ph = ah - titleH - capH;
-  const base = Math.min(aw, ah);
+  // ---- Strict poster zones: every text element owns a dedicated band and never
+  // crosses into another's. From top to bottom: logo zone, title band, photo zone,
+  // caption band. The badge lives in the caption band's right margin, outside the
+  // caption text's fit budget, so it can never collide with anything.
+  const hasLogo = !!state.logo;
+  const logoH = hasLogo ? ah * 0.28 : 0;
+  const titleH = hasLogo ? ah * 0.20 : ah * 0.30;
+  const capH = ah * 0.12;
+  const photoH = ah - logoH - titleH - capH - (hasLogo ? ah * 0.02 : 0);
+
+  const logoZoneY = ay;
+  const titleY = logoZoneY + logoH + (hasLogo ? ah * 0.02 : 0);
+  const photoY = titleY + titleH;
+  const photoHh = photoH;
+  const capY = photoY + photoHh;
 
   const layout = state.layout || 'hero3';
   const grade = GRADES[state.grade] || GRADES.sunset;
@@ -602,10 +774,10 @@ export function drawCover(ctx, state) {
     const r = rects[i % rects.length];
     const pan = state.panels[i] || {};
     const photo = pan.photo || state.photos[0] || null;
-    const rx = px + r[0] * pw;
-    const ry = py + r[1] * ph;
-    const rw = r[2] * pw;
-    const rh = r[3] * ph;
+    const rx = ax + r[0] * aw;
+    const ry = photoY + r[1] * photoHh;
+    const rw = r[2] * aw;
+    const rh = r[3] * photoHh;
     drawPanel(ctx, photo, rx, ry, rw, rh,
       pan.panX ?? DEFAULT_PAN.panX,
       pan.panY ?? DEFAULT_PAN.panY,
@@ -623,31 +795,42 @@ export function drawCover(ctx, state) {
     }
   }
 
-  if (state.halftone) drawHalftone(ctx, px, py, pw, ph, grade);
+  // Vice treatment on the photo zone: halftone, vignette and palm silhouettes.
+  if (state.halftone) drawHalftone(ctx, ax, photoY, aw, photoHh, grade);
   if (state.grain) drawGrain(ctx, 0, 0, w, h, 0.05);
-  if (state.vignette) drawVignette(ctx, 0, 0, w, h, 0.45);
+  if (state.vignette) drawVignette(ctx, ax, photoY, aw, photoHh, 0.45);
+  // Palm accents in the photo zone's lower corners, leaning inward.
+  drawPalm(ctx, ax + aw * 0.075, photoY + photoHh * 0.99, base * 0.30, 0.30, false);
+  drawPalm(ctx, ax + aw * 0.925, photoY + photoHh * 0.99, base * 0.30, 0.30, true);
 
-  const titleTop = ay + ah * 0.03;
-  const titleAvail = titleH - ah * 0.06;
-  // GTA VI branding: when the logo is on, the lockup owns the top of the artwork, so the title
-  // group starts below it instead of being hidden underneath the numerals.
-  const logoW = state.logo ? aw * 0.5 : 0;
-  const logoTop = ay + ah * 0.025;
-  const logoShift = state.logo ? logoW * 0.62 : 0;
-  drawTitleBlock(ctx, ax, titleTop + logoShift, aw, state.title1, state.title2, state.kicker, state.tagline, aw, ah, logoShift ? titleAvail - logoShift : titleAvail);
+  // Title group: strictly inside its own band (band-fit auto-fit inside drawTitleBlock).
+  const titleBox = drawTitleBlock(
+    ctx, ax, titleY + ah * 0.01, aw,
+    state.title1, state.title2, state.kicker, state.tagline,
+    aw, ah, titleH - ah * 0.02,
+  );
 
-  drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff', grade.accent);
+  const captionBox = drawCaptionBand(ctx, ax, capY, aw, capH, state.caption, '#ffffff', grade.accent);
 
   if (state.frame) drawFrame(ctx, 0, 0, w, h, '#e8e4da');
 
-  drawBadge(ctx, w - aw * 0.1, h - ah * 0.125, base * 0.07, '#ff3b30', '#ffffff', state.price);
+  // Price badge: bottom-right of the caption band, in the band's right margin. The
+  // caption text is fit-checked to ≤70% of the band width (centred), so the badge's
+  // right 25% is guaranteed free of caption text.
+  const badgeSize = base * 0.055;
+  const badgeCx = ax + aw - badgeSize * 1.6;
+  const badgeCy = capY + capH / 2 - badgeSize * 0.4;
+  const badgeBox = drawBadge(ctx, badgeCx, badgeCy, badgeSize, '#ff3b30', '#ffffff', state.price);
 
-  // GTA VI branding: drawn last, on top of the title, caption band, frame and badge so nothing hides
-  // it. Sits in the upper part of the artwork, centred on the cover width; the title block shifts
-  // down to make room (see above).
-  if (state.logo) {
-    drawLogoLockup(ctx, w / 2, logoTop, logoW, grade.accent);
+  // GTA VI logo lockup: owns the top zone exclusively, centred, clamped to the zone
+  // height so it can never bleed into the title band.
+  let logoBox = null;
+  if (hasLogo) {
+    logoBox = drawLogoLockup(ctx, w / 2, logoZoneY + ah * 0.015, aw * 0.62, grade.accent, logoH - ah * 0.03);
   }
+
+  // Render-time guard: no two text boxes may intersect. Throws on violation.
+  assertNoTextOverlap({ logo: logoBox, title: titleBox, caption: captionBox, badge: badgeBox });
 }
 
 // Assigns photos across a layout's panels, seeding each panel with the default upper-middle pan.
@@ -675,7 +858,7 @@ export function createDefaultState(photos) {
   seedPanels(panels, arr);
   return {
     layout: 'hero3',
-    grade: 'sunset',
+    grade: 'vice',
     title1: 'NEON',
     title2: 'COAST',
     kicker: 'PALM BEACH, 1986',

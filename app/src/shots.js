@@ -13,7 +13,7 @@ export async function runShot(query, load) {
     caption: (params.get('caption') || 'HEIST SEASON').toUpperCase(),
     price: '$9.99',
     layout: params.get('layout') || 'hero3',
-    grade: params.get('grade') || 'sunset',
+    grade: params.get('grade') || 'vice',
     size: params.get('size') || 'portrait',
     // ?logo=0 turns the GTA VI lockup off in screenshots; anything else keeps it on by default.
     logo: params.get('logo') !== '0',
