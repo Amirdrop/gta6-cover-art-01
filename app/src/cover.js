@@ -477,6 +477,106 @@ export function drawBadge(ctx, cx, cy, size, bg, fg, label) {
   ctx.restore();
 }
 
+// GTA VI-style logo lockup: small-caps letterspaced "GRAND THEFT AUTO" over a huge neon "VI".
+// Centred horizontally at cx with its top at `top`, inside a width budget w. Auto-fits so
+// "GRAND THEFT AUTO" spans ~60% of w and "VI" spans ~46% of w, and clamps the whole group so the
+// total lockup height fits the remaining canvas. Draws a soft glow (accent color) behind the
+// numerals so it pops over any photo.
+export function drawLogoLockup(ctx, cx, top, w, accent) {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  const viText = 'VI';
+  const kickerText = 'GRAND THEFT AUTO';
+
+  // Size the "VI" so it spans ~46% of w. Measure at a reference font size, then scale.
+  const refSize = 100;
+  ctx.font = `900 ${refSize}px Anton, 'Arial Black', sans-serif`;
+  const viW = ctx.measureText(viText).width;
+  let viSize = refSize * (w * 0.46) / Math.max(1, viW);
+
+  // Kicker is letterspaced; fit it so the tracked line spans ~60% of w.
+  let kSize = viSize * 0.2;
+  const kTrack = kSize * 0.34;
+  const kickerW = measureTracked(ctx, kickerText, kSize, kTrack);
+  kSize *= (w * 0.60) / Math.max(1, kickerW);
+
+  const gap = viSize * 0.22;
+  const totalH = kSize + gap + viSize;
+
+  // Clamp the whole lockup as a unit so it fits the height remaining on the canvas from `top`.
+  const avail = Math.max(1, ctx.canvas.height - top);
+  const scale = totalH > avail ? avail / totalH : 1;
+  const vSize = viSize * scale;
+  const kkSize = kSize * scale;
+  const kkTrack = kTrack * scale;
+  const gGap = gap * scale;
+
+  const kickerTop = top;
+  const viTop = top + kkSize + gGap;
+
+  // "GRAND THEFT AUTO": letterspaced small caps, cream/white fill, thin dark outline. Drawn first so
+  // the VI's glow stacks over it. Drawn per-letter so tracking and outline apply together.
+  ctx.save();
+  ctx.font = `900 ${kkSize}px Anton, 'Arial Black', sans-serif`;
+  const kkLine = kkSize * 0.05;
+  const letters = [...kickerText];
+  let kkTotal = 0;
+  for (const ch of letters) kkTotal += ctx.measureText(ch).width + kkTrack;
+  kkTotal -= kkTrack;
+  let kx = cx - kkTotal / 2;
+  ctx.lineWidth = Math.max(1, kkLine);
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillStyle = '#f4f0e8';
+  for (const ch of letters) {
+    ctx.strokeText(ch, kx, kickerTop);
+    ctx.fillText(ch, kx, kickerTop);
+    kx += ctx.measureText(ch).width + kkTrack;
+  }
+  ctx.restore();
+
+  // "VI" numerals. Three passes so it reads over any photo: soft glow, hard shadow, then outline + fill.
+  ctx.font = `900 ${vSize}px Anton, 'Arial Black', sans-serif`;
+
+  // Soft glow in the accent color behind the numerals.
+  ctx.save();
+  ctx.shadowColor = accent || '#ff3fae';
+  ctx.shadowBlur = vSize * 0.22;
+  ctx.fillStyle = '#ff3fae';
+  ctx.fillText(viText, cx, viTop);
+  ctx.restore();
+
+  // Hard offset dark shadow.
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillText(viText, cx + vSize * 0.05, viTop + vSize * 0.055);
+  ctx.restore();
+
+  // Thick dark outline, then neon gradient fill on top.
+  ctx.save();
+  ctx.lineWidth = Math.max(2, vSize * 0.045);
+  ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+  ctx.strokeText(viText, cx, viTop);
+  const grad = ctx.createLinearGradient(0, viTop, 0, viTop + vSize);
+  grad.addColorStop(0, '#ff3fae');
+  grad.addColorStop(0.55, '#ff8c1a');
+  grad.addColorStop(1, '#41e6ff');
+  ctx.fillStyle = grad;
+  ctx.fillText(viText, cx, viTop);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// Helper: width of a string drawn with letterspacing (tracking) at the given font size.
+function measureTracked(ctx, text, size, tracking) {
+  ctx.font = `900 ${size}px Anton, 'Arial Black', sans-serif`;
+  let total = 0;
+  for (const ch of text) total += ctx.measureText(ch).width + tracking;
+  return total - tracking;
+}
+
 // The top-level draw. `state` holds everything: layout, grade, photos, panels, texts, toggles.
 // `ctx` is a canvas context; the cover fills its whole area.
 export function drawCover(ctx, state) {
@@ -529,13 +629,25 @@ export function drawCover(ctx, state) {
 
   const titleTop = ay + ah * 0.03;
   const titleAvail = titleH - ah * 0.06;
-  drawTitleBlock(ctx, ax, titleTop, aw, state.title1, state.title2, state.kicker, state.tagline, aw, ah, titleAvail);
+  // GTA VI branding: when the logo is on, the lockup owns the top of the artwork, so the title
+  // group starts below it instead of being hidden underneath the numerals.
+  const logoW = state.logo ? aw * 0.5 : 0;
+  const logoTop = ay + ah * 0.025;
+  const logoShift = state.logo ? logoW * 0.62 : 0;
+  drawTitleBlock(ctx, ax, titleTop + logoShift, aw, state.title1, state.title2, state.kicker, state.tagline, aw, ah, logoShift ? titleAvail - logoShift : titleAvail);
 
   drawCaptionBand(ctx, ax, ay + ah - capH + capH * 0.02, aw, capH, state.caption, '#ffffff', grade.accent);
 
   if (state.frame) drawFrame(ctx, 0, 0, w, h, '#e8e4da');
 
   drawBadge(ctx, w - aw * 0.1, h - ah * 0.125, base * 0.07, '#ff3b30', '#ffffff', state.price);
+
+  // GTA VI branding: drawn last, on top of the title, caption band, frame and badge so nothing hides
+  // it. Sits in the upper part of the artwork, centred on the cover width; the title block shifts
+  // down to make room (see above).
+  if (state.logo) {
+    drawLogoLockup(ctx, w / 2, logoTop, logoW, grade.accent);
+  }
 }
 
 // Assigns photos across a layout's panels, seeding each panel with the default upper-middle pan.
@@ -574,6 +686,7 @@ export function createDefaultState(photos) {
     grain: true,
     halftone: true,
     vignette: true,
+    logo: true,
     photos: arr,
     panels,
   };

@@ -51,6 +51,7 @@ const els = {
   toggleGrain: $('toggleGrain'),
   toggleHalftone: $('toggleHalftone'),
   toggleVignette: $('toggleVignette'),
+  toggleLogo: $('toggleLogo'),
   exportBtns: $('exportBtns'),
   status: $('status'),
 };
@@ -238,6 +239,7 @@ els.toggleFrame.addEventListener('change', () => { state.frame = els.toggleFrame
 els.toggleGrain.addEventListener('change', () => { state.grain = els.toggleGrain.checked; redraw(); });
 els.toggleHalftone.addEventListener('change', () => { state.halftone = els.toggleHalftone.checked; redraw(); });
 els.toggleVignette.addEventListener('change', () => { state.vignette = els.toggleVignette.checked; redraw(); });
+els.toggleLogo.addEventListener('change', () => { state.logo = els.toggleLogo.checked; redraw(); });
 
 // export at full resolution for any of the supported sizes (PNG download via toBlob + anchor click)
 let currentExport = EXPORT_SIZES[0];

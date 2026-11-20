@@ -15,6 +15,8 @@ export async function runShot(query, load) {
     layout: params.get('layout') || 'hero3',
     grade: params.get('grade') || 'sunset',
     size: params.get('size') || 'portrait',
+    // ?logo=0 turns the GTA VI lockup off in screenshots; anything else keeps it on by default.
+    logo: params.get('logo') !== '0',
   };
 
   const sample = `samples/${params.get('photo') || 'pier'}.jpg`;
