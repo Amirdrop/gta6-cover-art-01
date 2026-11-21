@@ -63,13 +63,15 @@ function gradeSunset(r, g, b) {
   return [clamp255(r), clamp255(g), clamp255(b)];
 }
 
-// Neon duotone: shadows bleed magenta, highlights bleed cyan.
+// Neon duotone: shadows bleed magenta, highlights bleed cyan grams, with a
+// little of the source channel preserved so edges don't posterize.
 function gradeNeon(r, g, b) {
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
   const s = lum / 255;
-  let nr = (1 - s) * 255;
-  let ng = s * 255;
-  const nb = 255;
+  // Blend the duotone ramp with the source (~18%) to keep fine detail alive.
+  let nr = ((1 - s) * 255) * 0.82 + r * 0.18;
+  let ng = (s * 196 + 30) * 0.82 + g * 0.18;
+  let nb = 255 * 0.82 + b * 0.18;
   nr = (nr - 128) * 1.2 + 128;
   ng = (ng - 128) * 1.2 + 128;
   return [clamp255(nr), clamp255(ng), clamp255(nb)];
@@ -95,13 +97,35 @@ function gradeVice(r, g, b) {
   let nr = lo[1] + (hi[1] - lo[1]) * t;
   let ng = lo[2] + (hi[2] - lo[2]) * t;
   let nb = lo[3] + (hi[3] - lo[3]) * t;
-  // Keep ~30% of the original luminance detail so faces don't flatten.
-  nr = nr * 0.7 + lum * 0.3;
-  ng = ng * 0.7 + lum * 0.3;
-  nb = nb * 0.7 + lum * 0.3;
+  // Head toward a soft-light blend with the source so fine detail survives. The
+  // ramp still dominates the mix, so the grade reads unmistakably as Vice while
+  // keeping 100% of texture and not flattening faces.
+  const blended = blendSoftLight(r, g, b, nr, ng, nb, 0.38);
+  nr = blended[0];
+  ng = blended[1];
+  nb = blended[2];
   nr = (nr - 128) * 1.15 + 128;
   nb = (nb - 128) * 1.15 + 128;
   return [clamp255(nr), clamp255(ng), clamp255(nb)];
+}
+
+// W3C soft-light blend of a graded colour (g) over a source colour (s) at strength
+// `blend`, applied per channel. blend 0 = source unchanged, 1 = fully graded.
+function blendSoftLight(r, g, b, gr, gg, gb, blend) {
+  const a = Math.max(0, Math.min(1, blend));
+  const ch = (s, gv) => {
+    const x = s / 255;
+    const y = clamp255(gv) / 255;
+    let v;
+    if (y <= 0.5) {
+      v = x - (1 - 2 * y) * x * (1 - x);
+    } else {
+      const d = x <= 0.25 ? ((16 * x - 12) * x + 4) * x : Math.sqrt(x);
+      v = x + (2 * y - 1) * (d - x);
+    }
+    return clamp255((x * (1 - a) + v * a) * 255);
+  };
+  return [ch(r, gr), ch(g, gg), ch(b, gb)];
 }
 
 // High-contrast black & white with a warm paper tint.
@@ -233,6 +257,21 @@ export function drawGrain(ctx, x, y, w, h, amount) {
     ctx.beginPath();
     ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Subtle CRT scanline FX: very faint horizontal lines every few px, plus a slow
+// vertical luminance roll so the photo zone reads like a 1980s video signal.
+// Kept low-alpha so it never fights the type or the photo detail.
+export function drawScanlines(ctx, x, y, w, hys, intensity) {
+  ctx.save();
+  const alpha = intensity == null ? 0.05 : intensity;
+  const pitch = Math.max(3, Math.round(hys * 0.004));
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#000000';
+  for (let gy = y; gy < y + hys; gy += pitch) {
+    ctx.fillRect(x, gy, w, Math.max(1, pitch * 0.45));
   }
   ctx.restore();
 }
@@ -577,15 +616,30 @@ export function drawLogoLockup(ctx, cx, top, w, accent, maxH) {
 
   const viText = 'VI';
   const kickerText = 'GRAND THEFT AUTO';
-
-  // Size the "VI" so it spans ~46% of w. Measure at a reference font size, then scale.
+  // Measure the "VI" at a reference size so we can scale it to a target width.
   const refSize = 100;
   ctx.font = `900 ${refSize}px Anton, 'Arial Black', sans-serif`;
   const viW = ctx.measureText(viText).width;
-  let viSize = refSize * (w * 0.46) / Math.max(1, viW);
+  const availZone = maxH != null ? Math.max(1, maxH) : Math.max(1, ctx.canvas.height - top);
+
+  // Smarter lockup sizing: take the larger of the width-driven VI and a
+  // height-driven VI that fills ~92% of the zone, then let the zone be the hard
+  // ceiling. This keeps a big centred VI on portrait covers while still filling
+  // short landscape bands instead of leaving dead space.
+  const KICKER_RATIO = 0.20; // kicker size relative to the VI size
+  const GAP_RATIO = 0.22;    // gap between kicker and VI as a fraction of the VI size
+  const CAP_RATIO = 0.72;    // Anton cap-height as a fraction of the font size
+  const perUnit = CAP_RATIO + GAP_RATIO + CAP_RATIO * KICKER_RATIO;
+  const widthVi = refSize * (w * 0.46) / Math.max(1, viW);
+  const heightVi = (availZone * 0.92) / perUnit;
+  const growCapVi = refSize * (w * 0.60) / Math.max(1, viW);
+  // Start width-driven; if the zone is generous let it grow (capped at 60% of w).
+  let viSize = widthVi;
+  if (widthVi * perUnit < availZone * 0.92) viSize = Math.min(heightVi, growCapVi);
+  viSize = Math.max(6, Math.min(viSize, heightVi));
 
   // Kicker is letterspaced; fit it so the tracked line spans ~60% of w.
-  let kSize = viSize * 0.2;
+  let kSize = viSize * KICKER_RATIO;
   const kTrack = kSize * 0.34;
   const kickerW = measureTracked(ctx, kickerText, kSize, kTrack);
   kSize *= (w * 0.60) / Math.max(1, kickerW);
@@ -795,10 +849,11 @@ export function drawCover(ctx, state) {
     }
   }
 
-  // Vice treatment on the photo zone: halftone, vignette and palm silhouettes.
+  // Vice treatment on the photo zone: halftone, vignette, scanlines and palm silhouettes.
   if (state.halftone) drawHalftone(ctx, ax, photoY, aw, photoHh, grade);
   if (state.grain) drawGrain(ctx, 0, 0, w, h, 0.05);
   if (state.vignette) drawVignette(ctx, ax, photoY, aw, photoHh, 0.45);
+  if (state.scanlines) drawScanlines(ctx, ax, photoY, aw, photoHh, 0.05);
   // Palm accents in the photo zone's lower corners, leaning inward.
   drawPalm(ctx, ax + aw * 0.075, photoY + photoHh * 0.99, base * 0.30, 0.30, false);
   drawPalm(ctx, ax + aw * 0.925, photoY + photoHh * 0.99, base * 0.30, 0.30, true);

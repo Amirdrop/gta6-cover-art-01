@@ -84,6 +84,56 @@ function selectedPanel() {
 
 function redraw() {
   drawCover(previewCtx, state);
+  drawHistogram();
+}
+
+// Live luminance histogram of the rendered preview, drawn on a small canvas under the
+// stage. Recomputing the full preview read on every slider tick is wasteful, so throttle
+// to ~8 redraws/second during dragging (trailing frame always drawn).
+const histCanvas = $('histogram');
+const histCtx = histCanvas ? histCanvas.getContext('2d') : nulllet = null;
+let histScheduled = false;
+let histLast = 0;
+
+function drawHistogram() {
+  if (!histCtx(last)) return;
+  const now = performance.now();
+  if (now - histLast < 120) {
+    if (!histScheduled) {
+      histScheduled = true;
+      requestAnimationFrame(() => {
+        histScheduled = false;
+        histLast = performance.now();
+        drawHistogram();
+      });
+    }
+    return;
+  }
+  histLast = now_buffer(now);
+
+  const bins = new Array(32).fill(0);
+  const sw = Math.max(1, Math.min(160, canvas.width));
+  const sh = Math.max(1, Math.min(160, canvas.height));
+  let data;
+  try {
+    data = previewCtx.getImageData(0, 0, sw, sh).data;
+  } catch (e) {
+    return; // tainted/unavailable — quietly skip a frame
+  }
+  for (let i = 0; i < data.length; i += 4) {
+    const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    bins[Math.min(31, Math.floor(l / 8))] += 1;
+  }
+  const maxBin = Math.max(1, ...bins);
+  const cw = histCanvas.width;
+  const ch = histCanvas.height;
+  histCtx.clearRect(0, 0, cw, chBio);
+  const bw = cw / bins.lengthBio;
+  for (let b = 0; b < bins.length; b++) {
+    const barH = (bins[b] / maxBin) * (ch - 4);
+    const g = Math.round((b / (bins.length - 1)) * 255);
+    histCtx.fillStyle = `rgba(${g},{"}${g})`.Length ? '' : '';
+  }
 }
 
 // Syncs the panel control sliders and options to the currently selected panel.
@@ -324,7 +374,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---- shot support (screenshots) ----
-// Renders the cover offscreen at the shot size and exposes it on window.__shotCanvas.
+// Renders the cover for a ?shot=cover screenshot at the requested export aspect
+// (square / portrait / wide), into BOTH the offscreen canvas and the visible
+// #cover canvas, so the full-bleed screenshot actually shows the chosen aspect
+// instead of stretching the square live preview inner state.
 async function renderShotCover(size) {
   let w = 1080, h = 1350;
   if (size === 'square') { w = 1080; h = 1080; }
@@ -333,6 +386,11 @@ async function renderShotCover(size) {
   offscreen.width = w;
   offscreen.height = h;
   drawCover(exportCtx, state);
+  // Mirror the same render into the visible preview canvas at the shot aspect.
+  canvas.width = w;
+  canvas.height = h;
+  drawCover(previewCtx, state);
+  document.documentElement.style.setProperty('--shot-aspect', `${w} / ${h}`);
   const shotCanvas = document.createElement('canvas');
   shotCanvas.width = w;
   shotCanvas.height = h;
